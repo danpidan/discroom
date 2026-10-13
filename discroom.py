@@ -28,6 +28,7 @@ from audio import discover_outputs
 from player import Player
 from library_management import edit_tags, move_to_trash, list_trash, restore_trash, delete_trash_forever
 from updater import UpdateStore, RESTART_CODE
+from power import request_power
 
 RESTART_FLAGS = []
 
@@ -308,6 +309,9 @@ class MainWindow(QMainWindow):
         self.copying = False
         self.scan_busy = False
         self.library_busy = False
+        self.storage_available = False
+        self.library_refresh_pending = False
+        self.power_pending = False
         self.presence = False
         self.page = "Library"
         self.setWindowTitle(f"Disc Room {VERSION}")
@@ -421,7 +425,6 @@ class MainWindow(QMainWindow):
         if demo:
             self.seed_demo()
         else:
-            self.refresh_library()
             QTimer.singleShot(500, self.poll_disc)
         self.storage_status()
 
@@ -480,10 +483,19 @@ class MainWindow(QMainWindow):
             self.storage.setText(f"●  Music drive · {disk.free / 1024**3:.0f} GiB free")
             self.storage.setStyleSheet("color: #77dda2;")
         except Exception:
+            self.storage_available = False
+            self.library_refresh_pending = False
             self.storage.setText("●  Music drive disconnected")
             self.storage.setStyleSheet("color: #f4be68;")
             self.albums = []
+            self.update_filters()
             self.render_albums()
+            return
+        if not self.storage_available:
+            self.storage_available = True
+            self.library_refresh_pending = True
+        if self.library_refresh_pending and not (self.scan_busy or self.library_busy or self.copying):
+            self.refresh_library()
 
     def refresh_library(self):
         if self.demo:
@@ -494,8 +506,12 @@ class MainWindow(QMainWindow):
         try:
             library = require_storage(self.config, create=True)
         except Exception as exc:
+            self.storage_available = False
+            self.library_refresh_pending = False
             self.message.setText(str(exc))
             return
+        self.storage_available = True
+        self.library_refresh_pending = False
         self.scan_busy = True
         self.message.setText("Reading your music library…")
         def result(value):
@@ -503,7 +519,10 @@ class MainWindow(QMainWindow):
             try:
                 require_storage(self.config)
             except Exception:
+                self.storage_available = False
+                self.library_refresh_pending = False
                 self.albums = []
+                self.update_filters()
                 self.render_albums()
                 return
             self.albums, skipped = value
@@ -1045,8 +1064,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(fullscreen)
         layout.addWidget(button("Trash · restore or delete", self.trash))
         layout.addWidget(button("Software updates", self.software_updates))
+        layout.addWidget(heading("Pi power", 20))
+        power_actions = QHBoxLayout()
+        power_actions.addWidget(button("Restart Pi", lambda: self.power_action("reboot", dialog)))
+        power_actions.addWidget(button("Shut Down", lambda: self.power_action("poweroff", dialog)))
+        layout.addLayout(power_actions)
         info = QLabel("Albums are saved inside DiscRoom/Music on the selected drive.\n"
-                      "Network sharing and startup at boot will be configured after hardware testing.")
+                      "After shutdown, wait for the Pi to finish shutting down before switching off its power.")
         info.setWordWrap(True)
         layout.addWidget(info)
         layout.addStretch()
@@ -1087,6 +1111,67 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, refresh_outputs)
         dialog.exec_()
 
+    def power_action(self, action, dialog):
+        if action not in ("reboot", "poweroff"):
+            raise ValueError("Unknown Pi power action.")
+        if self.demo:
+            self.message.setText("Demo: Pi restart and shutdown are disabled.")
+            return
+        if self.power_pending:
+            return
+        title = "Restart Pi" if action == "reboot" else "Shut Down"
+        if self.copying or self.library_busy:
+            QMessageBox.information(dialog, "Please wait", "Finish copying or editing your music before restarting or shutting down.")
+            return
+        text = ("Restart the Pi now? Disc Room will open again after it boots."
+                if action == "reboot" else
+                "Shut down the Pi now? Wait for shutdown to finish before switching off the power. "
+                "Switch the power off and on to start it again.")
+        if QMessageBox.question(dialog, title, text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        # A confirmation opens a nested event loop; check again before making
+        # the app unavailable in case a queued library operation has started.
+        if self.copying or self.library_busy:
+            QMessageBox.information(dialog, "Please wait", "Finish copying or editing your music first.")
+            return
+        self.power_pending = True
+        self.setEnabled(False)
+        self.timer.stop()
+        self.storage_timer.stop()
+        self.message.setText("Finishing background checks…")
+
+        def failed(message):
+            self.power_pending = False
+            self.setEnabled(True)
+            self.timer.start()
+            self.storage_timer.start()
+            self.error(message)
+
+        def accepted(message):
+            self.message.setText(message)
+            # Let the command worker finish before Qt destroys its threads.
+            def finish():
+                if self.jobs:
+                    QTimer.singleShot(200, finish)
+                    return
+                QApplication.instance().exit(0)
+            finish()
+
+        def prepare():
+            if self.jobs:
+                QTimer.singleShot(200, prepare)
+                return
+            try:
+                self.config["fullscreen"] = self.isFullScreen()
+                save_config(self.config)
+            except Exception as exc:
+                failed(str(exc))
+                return
+            self.player.stop()
+            self.message.setText("Restarting Pi…" if action == "reboot" else "Shutting down Pi…")
+            self.work(lambda worker: request_power(action), accepted, failed)
+        prepare()
+
     def software_updates(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Software updates")
@@ -1120,6 +1205,8 @@ class MainWindow(QMainWindow):
             busy(False)
             status.setText(message)
         def restart():
+            if self.power_pending:
+                return
             if self.copying or self.library_busy:
                 status.setText("Finish the current copy or music-library change before restarting.")
                 return
@@ -1208,6 +1295,9 @@ class MainWindow(QMainWindow):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        if self.power_pending:
+            event.ignore()
+            return
         if self.jobs:
             if self.copy_job:
                 self.copy_job.cancel.set()

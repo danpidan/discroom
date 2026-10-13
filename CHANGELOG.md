@@ -1,3 +1,25 @@
+# Version 0.3.3
+
+- Added Restart Pi and Shut Down buttons to Settings, each with a confirmation
+  that defaults to No. Demo mode never makes system power requests.
+- Refuses either action during a CD copy or music-library edit. After confirmation,
+  stops new drive checks, waits for active workers, saves settings and stops audio.
+- Requests a normal systemd restart/shutdown without sudo, forced shutdown or
+  interactive password prompts. If saving settings or the system request fails,
+  the app stays open and its controls/checks are restored.
+- Settings describes when to disconnect power after shutdown.
+
+# Version 0.3.2
+
+- Automatically scans the library when the music drive first becomes available
+  after startup or is reconnected, instead of requiring Refresh library.
+- Defers this scan while another scan, a CD copy or a music-library edit is busy.
+  An available drive is not repeatedly scanned on every storage check.
+- Clears unavailable albums and filters when the drive disconnects and rejects
+  scan results if the drive is no longer mounted.
+- Uses the existing five-second storage timer and background scan worker. This
+  release does not change how the operating system mounts the HDD.
+
 # Version 0.3.1
 
 - Removed the Import ripped test track button from Settings and its test-only

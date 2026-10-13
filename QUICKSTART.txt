@@ -1,4 +1,4 @@
-DISC ROOM — PI TEST BUILD 0.3.1
+DISC ROOM — PI TEST BUILD 0.3.3
 
 Extract the ZIP so the app is in /home/cddigitiser/discroom.
 
@@ -19,7 +19,15 @@ python3 launch.py --fullscreen
 
 Escape leaves fullscreen. Settings → Close app exits.
 
+Settings → Restart Pi reboots the Pi after confirmation.
+Settings → Shut Down safely shuts it down after confirmation. Wait until the
+Pi finishes shutting down before switching off its power. Switch the power off
+and on to start it again. Finish CD copying and library edits before either action.
+
 UPDATE TESTS:
+0. Restart the Pi with its music drive connected. Albums should appear without
+   pressing Refresh library, within five seconds of the drive becoming ready
+   plus the time needed to scan the library.
 1. Play stored music. Try volume +/- and the wider slider.
 2. Open the album, select another track, then Play selected.
 3. Use a stored album to try Edit track and Delete track.

@@ -1,4 +1,4 @@
-# Disc Room — Pi test build, version 0.3.1
+# Disc Room — Pi test build, version 0.3.3
 
 Native Python / PyQt5 interface for your Raspberry Pi 4B running Bookworm with
 `armhf` applications. Designed around 1280 × 720 landscape; test on your existing
@@ -44,11 +44,19 @@ Native Python / PyQt5 interface for your Raspberry Pi 4B running Bookworm with
 
 - Native dark touchscreen interface with an album grid and persistent player.
 - Search by artist, album or track; artist, genre and year filters; sorting.
+- Automatic library loading when the music drive becomes available after boot
+  or is reconnected. The five-second storage check starts one background scan;
+  it waits for an existing scan, CD copy or library edit to finish.
 - Favourites, album/track playback, queue, pause, next/previous, seek and volume.
 - Larger touch controls, text transport labels, volume +/- buttons and a saved
   volume preference. Playback commands run outside the GUI thread.
 - Stored album/track metadata editors and deletion to Trash; Settings → Trash
   offers Restore and Delete permanently. Deletion requires confirmation.
+- **Settings → Restart Pi / Shut Down** asks for confirmation and requests an
+  orderly system restart/shutdown. Finish any CD copy or library edit first.
+  Background checks finish and settings are saved before the request. Power
+  commands use the normal logged-in desktop user's system permissions; a refused
+  request shows an error and keeps the app open. Demo mode never powers off.
 - **Settings → Software updates** checks numbered Git release tags and offers
   Update app, restart and rollback. New releases are installed separately and
   activated only after GUI startup succeeds. See DEVELOPMENT.md for setup.
@@ -115,13 +123,12 @@ fictional albums are only in explicit demo mode; they are not added to your HDD.
 ## Current limits and next stages
 
 This is the first hardware-test build, not a completed Brennan replacement.
-Full hardware validation needs your Pi. Boot splash, automatic GUI startup,
-persistent HDD mounting and Samba sharing are not configured by this package.
-The installed desktop stays available during testing. We will set up those
-services once playback and copying work reliably in the GUI.
+Full hardware validation needs your Pi. Boot splash, persistent HDD mounting
+and Samba sharing are not configured by this package. Full-screen automatic
+startup has been configured separately through the Pi's labwc startup file.
 
-Resume after power loss, a shutdown screen and saved playlist management are
-not included yet. A lost-power partial copy remains
+Resume after power loss and saved playlist management are not included yet.
+A lost-power partial copy remains
 hidden in `.copying` for later inspection. Scratched discs can still fail;
 encoding verification confirms the FLAC matches the extracted WAV, rather than
 independently confirming the CD audio against AccurateRip.

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 import requests
 from mutagen.flac import FLAC
 
-VERSION = "0.3.1"
+VERSION = "0.3.3"
 USER_AGENT = f"DiscRoom/{VERSION} (personal Raspberry Pi CD library)"
 CONFIG_PATH = Path.home() / ".config/discroom/config.json"
 
