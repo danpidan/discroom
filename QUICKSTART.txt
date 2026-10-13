@@ -1,0 +1,45 @@
+DISC ROOM — PI TEST BUILD 0.3.0
+
+Extract the ZIP so the app is in /home/cddigitiser/discroom.
+
+Open a terminal on the Pi, then run:
+
+cd ~/discroom
+bash install.sh
+python3 launch.py --mount /media/cddigitiser/DA265AA768731CC7
+
+In the app:
+1. Settings → Audio output → choose Ugreen/USB DAC → Save.
+2. Settings → Import ripped test track.
+3. Library → First copy → Play album.
+4. Insert a CD → Copy CD → edit details → Save & Copy.
+
+Run windowed first. To use fullscreen later:
+
+python3 launch.py --fullscreen
+
+Escape leaves fullscreen. Settings → Close app exits.
+
+UPDATE TESTS:
+1. Play stored music. Try volume +/- and the wider slider.
+2. Open the album, select another track, then Play selected.
+3. Use the imported test album to try Edit track and Delete track.
+4. Settings → Trash → select the removed item → Restore.
+
+Delete moves music to Trash. Delete permanently in Trash frees disk space.
+Updating the existing app only requires replacing its files and relaunching;
+you do not need to run install.sh again.
+
+ONE-TIME GITHUB SETUP:
+cd ~/discroom
+bash setup-github.sh
+
+Follow GitHub's browser login. The script pushes the prepared source and
+v0.3.0 tag to github.com/danpidan/discroom and creates ~/discroom-dev.
+Then launch the app and open Settings → Software updates.
+Update app installs a newer numbered release and restarts automatically.
+See DEVELOPMENT.md for VS Code remote SSH and publishing future versions.
+
+The app creates DiscRoom/Music on the HDD. It does not format the drive.
+No commands in this package have been run on your Pi by the assistant.
+See README.md for what is included, testing limits and troubleshooting.
