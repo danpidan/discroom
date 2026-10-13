@@ -1,208 +1,261 @@
-# Disc Room — Pi test build, version 0.3.3
+# Disc Room
 
-Native Python / PyQt5 interface for your Raspberry Pi 4B running Bookworm with
-`armhf` applications. Designed around 1280 × 720 landscape; test on your existing
-11.6-inch screen before moving to the 7-inch Touch Display 2.
+A touchscreen CD player and FLAC music library for Raspberry Pi. Insert a CD,
+choose **Play** or **Copy**, check its album details, and save your music to an
+external drive. Browse, search, play and manage your stored albums in one app.
 
-## Get started
+Current app version: **0.3.3**.
 
-1. Download `discroom-pi-first-build.zip` on the Pi, or transfer it from your
-   computer using a USB stick. Extract it into your home folder. The resulting
-   folder should be `~/discroom`.
-2. Open a terminal and run:
+## Hardware needed
 
-   ```sh
-   cd ~/discroom
-   bash install.sh
-   ```
+| Hardware | What to use |
+|---|---|
+| Raspberry Pi | **Raspberry Pi 4B**. A 4GB model is sufficient for this project. |
+| Pi power supply | A suitable Pi 4 USB-C supply, normally 5.1V / 3A. |
+| microSD card | 16GB or larger; 32GB is a practical choice for the OS and app. |
+| USB CD drive | A Linux-compatible drive that reads audio CDs and supports software eject. A Verbatim USB drive has been tested. |
+| Music storage | An external USB HDD/SSD, or a SATA drive with a USB adapter. Use an existing formatted partition with enough free space. |
+| Display | An HDMI monitor or compatible Pi touchscreen. The layout targets **1280 × 720 landscape**. A portrait display, such as Touch Display 2, needs landscape rotation. |
+| USB DAC and speakers | A Linux-compatible USB audio DAC, plus headphones or an amplifier/powered speakers. A Ugreen USB-to-3.5mm DAC has been tested. |
+| USB power | A powered USB hub is recommended when running a CD drive and mechanical HDD together. Power the Pi from its own suitable supply. |
+| Network | Ethernet or Wi-Fi for installation, metadata/cover lookup and updates. Stored music can play offline. |
+| Setup equipment | A computer and microSD reader for writing the OS. A keyboard/mouse is useful for initial display setup; SSH can handle terminal maintenance. |
 
-   This installs dependencies through apt, which supports your `armhf` system.
-   Run as your ordinary desktop user. The script uses sudo only for apt.
+**Compatibility:** Raspberry Pi 4B is the tested model. The app may work on other
+Raspberry Pis, but they have not been tested. Hardware testing so far used
+Raspberry Pi OS **Bookworm / Debian 12**, with 32-bit (`armhf`) applications and
+a labwc desktop. Other OS releases/versions and userspace architectures may
+work, but have not been tested.
 
-3. Connect the HDD. If needed, open it in File Manager so the desktop mounts it.
-   Launch with your confirmed mount folder:
+The fresh-install guide below uses **Raspberry Pi OS Lite (Bookworm)** to avoid
+installing desktop applications and extra features that are not currently
+needed. Lite still needs a small graphics layer to display the touchscreen app.
 
-   ```sh
-   cd ~/discroom
-   python3 launch.py --mount /media/cddigitiser/DA265AA768731CC7
-   ```
+**The fresh Lite setup below has not yet been verified on a physical Pi.**
+The working desktop installation has been tested; it does not need reinstalling.
 
-   Start windowed for the first test. Once happy, add `--fullscreen`. Press Escape
-   to leave fullscreen, or use **Settings → Close app** to exit.
+## 1. Install Raspberry Pi OS Lite
 
-4. Open **Settings**, select the Ugreen/USB DAC in the detected **Audio output**
-   list, and press **Save**. If your library already contains albums, open an
-   album and choose **Play album** to check playback.
-5. Insert an audio CD. The app checks every four seconds and shows **Play CD**
-   and **Copy CD** after reading the track list. The desktop's removable-media
-   popup may still appear during this test; close that popup.
-6. Choose **Copy CD**, confirm/edit the album and track details, then choose
-   **Save & Copy**. Progress is shown by track. On success, the completed album
-   is added to the library and the tray opens.
+1. On your computer, download [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
+2. Insert the microSD card and open Imager. Select **Raspberry Pi 4** as the device.
+3. Choose **Raspberry Pi OS Lite — Bookworm / Debian 12**, preferably the 32-bit
+   image to match the tested app userspace. If the default image is a newer OS
+   release, choose the Bookworm image from Imager's legacy options or use a
+   downloaded Bookworm image through **Use custom**.
+4. Select the microSD card. Writing an OS image replaces the contents of that
+   card, so select the card intended for the Pi's operating system.
+5. Configure your own username/password, hostname, Wi-Fi if needed, and locale.
+   Enable **SSH** if you want to use your computer for the terminal steps.
+6. Write and verify the image. Put the card in the Pi, connect the display and
+   hardware, then power it on.
 
-## What this build includes
+[Watch: How to Install Raspberry Pi OS Lite — StrykerBytes, YouTube](https://www.youtube.com/watch?v=Vok1K50rHwI).
 
-- Native dark touchscreen interface with an album grid and persistent player.
-- Search by artist, album or track; artist, genre and year filters; sorting.
-- Automatic library loading when the music drive becomes available after boot
-  or is reconnected. The five-second storage check starts one background scan;
-  it waits for an existing scan, CD copy or library edit to finish.
-- Favourites, album/track playback, queue, pause, next/previous, seek and volume.
-- Larger touch controls, text transport labels, volume +/- buttons and a saved
-  volume preference. Playback commands run outside the GUI thread.
-- Stored album/track metadata editors and deletion to Trash; Settings → Trash
-  offers Restore and Delete permanently. Deletion requires confirmation.
-- **Settings → Restart Pi / Shut Down** asks for confirmation and requests an
-  orderly system restart/shutdown. Finish any CD copy or library edit first.
-  Background checks finish and settings are saved before the request. Power
-  commands use the normal logged-in desktop user's system permissions; a refused
-  request shows an error and keeps the app open. Demo mode never powers off.
-- **Settings → Software updates** checks numbered Git release tags and offers
-  Update app, restart and rollback. New releases are installed separately and
-  activated only after GUI startup succeeds. See DEVELOPMENT.md for setup.
-- On-screen keyboard for Search and pre-copy metadata editing.
-- Audio CD detection, direct CD playback and track selection using mpv.
-- MusicBrainz album matches, editable album artist/title, year, genre and track
-  titles/artists; compilation support. Offline or unmatched CDs can be entered
-  manually. Multiple available releases appear in the editor's match selector.
-- cdparanoia with abort-on-skip, per-track FLAC encoding verification, tagging,
-  optional cover art and software eject only after a successful save.
-- New files under `DiscRoom/Music` on the selected drive. Existing files outside
-  that folder are not changed. An already existing album/disc is never replaced.
-- Temporary copies kept outside the visible album library. A failed or cancelled
-  job is removed; the CD stays inserted. The mount is checked before creating
-  folders and throughout copying, so a missing HDD is not silently replaced by
-  the microSD card as a destination.
+The video uses an older Imager interface. Follow the settings above for your
+own username, network and SSH; there is no assumed default Pi login.
 
-## Audio
+For current Imager steps, see the [official installation guide](https://www.raspberrypi.com/documentation/computers/getting-started.html).
 
-Version 0.1.1 replaces the guessed USB card name with a detected output list.
-Settings queries mpv and saves the exact output ID reported by your Pi. Choose
-the entry describing your Ugreen/USB DAC, then press Save. On a desktop system,
-a matching "desktop audio" entry routes through the desktop's audio mixer.
-If the list only contains HDMI or headphones, check the DAC connection and
-press **Refresh audio outputs**. For terminal diagnostics, list devices:
+Log in on the Pi's attached keyboard/display, or use SSH from your computer:
 
 ```sh
-mpv --audio-device=help
+ssh YOUR_USERNAME@YOUR_PI_IP
 ```
 
-The app starts at 40% software volume on a fresh configuration, then remembers
-your chosen level. The +/- buttons change it in 5% steps and the slider allows
-finer adjustment. Keep your amplifier low during the first test. Close other audio players before testing, as they may hold the
-DAC open. A desktop audio server may also own the output; if mpv reports that
-it is busy, send the message before changing audio services.
+Replace both placeholders with your Pi details. On a local Pi terminal,
+`hostname -I` shows the IP address. For a headless first boot, find the address
+in your router's connected-device list. Use the Pi account password for SSH.
 
-Direct CD playback requires the installed mpv build to support CDDA. The Pi's
-previous test confirmed ripping and FLAC playback through aplay; playback from
-CD through mpv is a separate check. If unsupported, send its error message so
-we can select a compatible playback backend.
-The implementation follows the [Bookworm mpv manual](https://manpages.debian.org/bookworm/mpv/mpv.1.en.html):
-CDDA uses a single CD stream and tracks are chapters.
+## 2. Update the Pi's OS packages
 
-## Storage
+Run these commands **on the Pi** or in an SSH session connected to it:
 
-On your current drive the library is:
+```sh
+sudo apt update
+sudo apt full-upgrade -y
+sudo reboot
+```
+
+Wait for the Pi to restart, then log in or reconnect through SSH. This updates
+packages within the installed OS release; changing to another major OS release
+is a separate operation.
+
+## 3. Download and install Disc Room from GitHub
+
+Run as your normal Pi user:
+
+```sh
+sudo apt install -y git
+git clone --branch v0.3.3 --single-branch https://github.com/danpidan/discroom.git ~/discroom-git
+cd ~/discroom-git
+bash install.sh
+```
+
+The clone downloads the published **v0.3.3** app. The repository is public, so
+no GitHub login is needed for downloads or updates. `install.sh` installs the
+Python, audio and CD-copying dependencies through apt. It uses sudo for package
+installation; the app itself runs as your ordinary user.
+
+If `~/discroom-git` already exists, use that installation instead of cloning over
+it. Existing users should use the update button described below.
+
+## 4. Set up Lite's display, music drive and automatic startup
+
+Complete the numbered steps in [OS-LITE.md](docs/OS-LITE.md). They install a
+minimal X11/Openbox session, mount your existing music partition by its UUID,
+and configure automatic full-screen startup through `launch.py`.
+
+This step is required on Lite: installing Python dependencies alone does not
+create a graphical session. The setup runs the app without the full Raspberry
+Pi desktop, browser or office applications. It does not use File Manager to
+mount the HDD and has no desktop CD-insertion popup.
+
+After completing the setup, reboot with the display, CD drive, DAC and music
+drive connected. The app should open on the Pi's attached screen. Boot messages
+may still be visible before the graphical session starts.
+
+If you already use the working labwc desktop installation, keep that startup
+setup and skip the Lite conversion. See [DEVELOPMENT.md](DEVELOPMENT.md) for
+remote development and troubleshooting release publishing.
+
+## 5. Configure the app the first time
+
+1. Open **Settings**.
+2. For **Music drive mount folder**, select `/mnt/discroom-music` if you followed
+   the Lite storage guide. Select the mount folder, rather than its Music subfolder.
+   A desktop installation can instead select its existing `/media/...` mount.
+3. Under **Audio output**, choose the detected output describing your USB DAC.
+   Use **Refresh audio outputs** after connecting a DAC if necessary.
+4. Press **Save**.
+5. If albums are already in `DiscRoom/Music` on that drive, they will appear.
+   Otherwise, insert an audio CD and copy your first album.
+
+Settings are saved in `~/.config/discroom/config.json`. Music uses this layout
+inside the selected mounted drive:
 
 ```text
-/media/cddigitiser/DA265AA768731CC7/DiscRoom/Music
-    Album artist/Album title/Disc 1/01 - Track title.flac
+DiscRoom/Music/Album artist/Album title/Disc 1/01 - Track title.flac
 ```
 
-Configuration is saved in `~/.config/discroom/config.json`. Changing the mount
-folder in Settings selects the library on that drive; it does not move or erase
-music on the previous drive. A differently numbered disc in the same album gets
-a separate `Disc N` folder. To copy a duplicate edition, edit the album title to
-make a distinct folder.
+The app creates its dedicated folder and manages music inside it. Changing the
+selected drive does not move music from another drive. Albums refresh when the
+music drive becomes available, normally within five seconds plus scan time.
 
-The app only scans its dedicated music folder, not the whole HDD. It reads
-embedded FLAC cover art, or cover.jpg/cover.png/folder.jpg beside the tracks.
-Simple generated artwork appears when no cover is available. The screenshot's
-fictional albums are only in explicit demo mode; they are not added to your HDD.
+## How to use Disc Room
 
-## Current limits and next stages
+The screenshots below show the actual Qt app in demo mode, using fictional
+albums and tracks. They are software screenshots rather than photos of a Pi.
 
-This is the first hardware-test build, not a completed Brennan replacement.
-Full hardware validation needs your Pi. Boot splash, persistent HDD mounting
-and Samba sharing are not configured by this package. Full-screen automatic
-startup has been configured separately through the Pi's labwc startup file.
+### Play a CD
 
-Resume after power loss and saved playlist management are not included yet.
-A lost-power partial copy remains
-hidden in `.copying` for later inspection. Scratched discs can still fail;
-encoding verification confirms the FLAC matches the extracted WAV, rather than
-independently confirming the CD audio against AccurateRip.
+1. Insert an audio CD and wait for the app to detect it.
+2. Choose **Play** in the CD panel.
+3. Use **Tracks** to choose a track, and the player controls to pause, navigate
+   and adjust volume. Use **Eject** when finished.
 
-The search keyboard handles letters, digits, basic punctuation and spaces. A
-physical keyboard can enter additional characters. Long albums scroll in the
-track editor. The first visual check should verify keyboard/layout fit on your
-screen; the cloud workspace could not install Qt test dependencies.
+Direct CD playback needs an mpv build with CDDA support. Copying and stored FLAC
+playback are hardware-verified; direct CD playback needs its own hardware check.
 
-## Optional design-only preview
+### Copy a CD to your library
 
-```sh
-python3 discroom.py --demo
-```
+1. Insert an audio CD and choose **Copy**.
+2. Review the album artist, title, year, genre and every track title. Internet
+   lookup can return the wrong edition or no match; edit any incorrect details.
+   You can enter details manually when offline or when no match is found.
+3. For compilations, use **Various artists / compilation** and check each
+   track's artist.
+4. Press **Save & Copy**. The app shows progress while extracting and saving
+   lossless FLAC tracks, with encoding verification.
+5. When saving finishes successfully, the album appears and the CD ejects.
 
-Demo mode shows fictional albums and a pretend CD, and does not access drives,
-save configuration or rip anything.
+**Check album and track details before copying:**
 
-## Tests
+![CD metadata editor with editable album and track details before saving and copying](docs/screenshots/copy-details.png)
 
-```sh
-python3 -m unittest -v test_core test_audio test_controls test_management test_updater
-```
+Use **Cancel copy** if needed and wait for cancellation to finish. A cancelled
+or failed copy is not published as a completed album. To copy a second edition
+of an already stored album/disc, give it a distinct album title.
 
-The tests use fake optical-drive and encoder commands to exercise real storage
-orchestration: no publication after failure/cancellation, no overwriting an
-existing edition, mount checks, and save-before-eject ordering. They do not
-verify the physical drive or graphical rendering.
-The control tests check fragmented/event-first replies and intentional stop
-handling using an in-memory transport. Library management tests cover editing,
-rollback, deleting/restoring albums and tracks, and refusing restore conflicts.
+### Find and play stored music
 
-## Managing stored music
+- Type an artist, album or track title into **Search**. **Keyboard** opens the
+  app's touchscreen keyboard.
+- Use artist, genre and year filters, sorting, or **Favourites** to narrow the list.
+- Open an album and press **Play album**, or select a track and press **Play selected**.
+- **Add to queue** adds the album to the playback queue.
+- Use **Previous**, **Play/Pause**, **Next**, **Stop** and the seek slider.
+- Adjust volume with the slider or **− / +** buttons. The app remembers the level.
 
-Open an album to use **Edit album**, **Edit track**, **Delete album**, or
-**Delete track**. Select a track before using its controls. Album editing changes
-stored tags while retaining existing file paths; search and display refresh
-after saving. Favourites follow an album's changed title/artist.
+**Library, search, filters and playback controls** — the CD panel on the right
+also contains **Play**, **Copy**, **Tracks** and **Eject**:
 
-Delete moves selected music into `DiscRoom/Music/.trash`. These files no longer
-appear in the library, but still use disk space until **Settings → Trash →
-Delete permanently**. **Restore** puts an item back in its original location
-and refuses to overwrite any newer music there. Deleting a whole album includes
-its cover if the folder contains no other album's music. Deleting one track
-preserves the other tracks and artwork.
+![Disc Room library showing search, filters, album cards, CD controls and player](docs/screenshots/library.png)
 
-The two-row player bar has readable **Previous**, **Play/Pause**, **Next**, and
-**Stop** controls. Playing from a selected track retains the full album queue,
-so Previous and Next can navigate the album.
+### Edit or delete music
 
-## Updating an existing build
+Open an album to use **Edit album**, **Edit track**, **Delete album** or
+**Delete track**. Select a track before using its individual controls.
 
-Close the app, then extract the newer archive over the existing `~/discroom`
-application folder. Replace its application files when asked. Music is in a
-separate folder on your HDD, and configuration is in `~/.config/discroom`, so
-neither is included in or overwritten by the archive.
+**Album screen** — select a track, then choose its playback or management action:
 
-Launch `python3 launch.py`, open Settings, select the detected USB DAC output,
-and press Save. Dependency installation is not needed again if the first build
-is already installed. Output selection still needs testing on your Pi.
+![Album track list with playback, queue, favourites, editing and deletion buttons](docs/screenshots/album.png)
 
-For the existing public GitHub repository, the Pi can download the app without
-logging in:
+Edits change tags and refresh the display; stored file paths remain as they are.
+Deletion moves music to the app's Trash. Open **Settings → Trash** to **Restore**
+it or **Delete permanently** to free disk space. Restoring refuses to overwrite
+newer music already occupying the destination.
 
-```sh
-git clone https://github.com/danpidan/discroom.git ~/discroom-git
-cd ~/discroom-git
-python3 launch.py
-```
+### Restart or shut down
 
-If this folder already exists, launch its `launch.py` rather than cloning again.
-Use **Settings → Software updates → Check for updates → Update app** to install
-new numbered releases. The app restarts automatically. Publishing changes to
-GitHub still requires the repository owner's authentication.
+Open **Settings → Restart Pi** or **Shut Down**, then confirm. Finish CD copying
+and music edits first. Wait for shutdown to finish before disconnecting power.
+On Pi 4B, switch the supply off, wait about five seconds and switch it on again
+to start after shutdown. A restart should reopen Disc Room automatically.
 
-Check playback/volume and track switching, then use an album to check
-editing, deletion and restoration. See CHANGELOG.md for changes and limits.
+**Settings, scrolled to the Pi power controls:**
+
+![Settings showing software updates, Restart Pi, Shut Down and Save](docs/screenshots/settings.png)
+
+**Close app** exits only the application. In the Lite/Openbox setup, the minimal
+graphical session stays open; use SSH or its terminal for maintenance.
+
+## Update the app from GitHub
+
+1. Finish any CD copy or library edit and make sure the Pi has internet access.
+2. Open **Settings → Software updates** (shown in the Settings screenshot above).
+3. The repository URL should be `https://github.com/danpidan/discroom.git`.
+4. Press **Check for updates**.
+5. If a newer version is available, press **Update app**.
+6. Wait while the release is downloaded and checked. The app restarts automatically.
+7. Open Software updates again to confirm the **Running version**.
+
+Downloads need no GitHub login. Music and settings are stored separately from
+app releases. If a newly installed release fails to start, the launcher attempts
+the previous version. **Roll back update** selects a previous version for other
+problems; it rolls back app code, rather than music edits or settings history.
+
+For maintainers, the release tag must match `VERSION` in that release's
+`core.py`: `v0.3.3` must contain `VERSION = "0.3.3"`. Upload/commit the code first,
+then create the matching new tag. Do not rewrite published tags. Publishing
+requires your GitHub account; see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## Troubleshooting and limits
+
+- **Music drive disconnected:** check cables/power and `findmnt /mnt/discroom-music`.
+  The app requires a mounted, writable external music folder.
+- **No sound:** check the DAC connection, select its detected output in Settings,
+  and check your amplifier/headphones and software volume. Close other players
+  that may hold the DAC. `mpv --audio-device=help` lists detected outputs.
+- **GUI does not start on Lite:** see the display/startup checks in
+  [OS-LITE.md](docs/OS-LITE.md). An ordinary SSH shell has no graphical display.
+- **Release version mismatch:** the published tag and its `core.py` version must
+  agree. Editing a release title does not change its tag or commit.
+- Scratched discs can fail. FLAC verification checks encoding against the
+  extracted audio; AccurateRip comparison is not implemented.
+- Boot splash, network sharing through Samba and saved playlist management are
+  not configured by this package. Music is stored locally on the selected drive.
+
+For a preview without hardware access, run `python3 discroom.py --demo` in a
+graphical session. With the screenshot tool available, `python3 tools/screenshots.py`
+regenerates the demo images using an offscreen display. App dependency installation
+is required. Hardware-free checks run with `python3 -m unittest discover -v`.
