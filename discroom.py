@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QFileD
                             QVBoxLayout, QWidget)
 
 from core import (VERSION, Album, Disc, Track, blank_metadata, drive_has_disc,
-                  import_test, load_config, lookup_disc, read_disc, require_storage,
+                  load_config, lookup_disc, read_disc, require_storage,
                   rip_album, save_config, scan_library, run_checked)
 from audio import discover_outputs
 from player import Player
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
             self.update_filters()
             self.render_albums()
             self.message.setText(f"{len(self.albums)} albums" + (f" · {skipped} unreadable files skipped" if skipped else "")
-                                 if self.albums else "No albums yet. Copy a CD, or import your test track in Settings.")
+                                 if self.albums else "No albums yet. Insert a CD and choose Copy CD to add an album.")
         def failed(text):
             self.scan_busy = False
             self.error(text)
@@ -1043,7 +1043,6 @@ class MainWindow(QMainWindow):
         fullscreen = QCheckBox("Full-screen interface")
         fullscreen.setChecked(self.isFullScreen())
         layout.addWidget(fullscreen)
-        layout.addWidget(button("Import ripped test track", self.import_test))
         layout.addWidget(button("Trash · restore or delete", self.trash))
         layout.addWidget(button("Software updates", self.software_updates))
         info = QLabel("Albums are saved inside DiscRoom/Music on the selected drive.\n"
@@ -1197,12 +1196,6 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(dialog, "Choose the drive's mount folder", "/media")
         if folder:
             field.setText(folder)
-
-    def import_test(self):
-        if self.demo or self.library_busy or self.copying:
-            return
-        config = copy.deepcopy(self.config)
-        self.work(lambda worker: import_test(config), lambda result: self.refresh_library())
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:

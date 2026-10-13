@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 import requests
 from mutagen.flac import FLAC
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 USER_AGENT = f"DiscRoom/{VERSION} (personal Raspberry Pi CD library)"
 CONFIG_PATH = Path.home() / ".config/discroom/config.json"
 
@@ -383,31 +383,3 @@ def scan_library(library):
     for album in albums.values():
         album.tracks.sort(key=lambda track: (track.number, track.title))
     return list(albums.values()), skipped
-
-
-def import_test(config):
-    library = require_storage(config, create=True)
-    source = Path.home() / "cd-test/test-track.flac"
-    if not source.is_file():
-        raise RuntimeError("Test FLAC was not found in ~/cd-test.")
-    target = library / "Test recording/First copy/Disc 1"
-    if target.exists():
-        return "Test album is already in your library."
-    staging_root = library / ".copying"
-    staging_root.mkdir(exist_ok=True)
-    staging = Path(tempfile.mkdtemp(dir=staging_root, prefix="test-"))
-    try:
-        copied = staging / "01 - Test track.flac"
-        shutil.copy2(source, copied)
-        audio = FLAC(copied)
-        audio["title"], audio["artist"], audio["albumartist"] = "Test track", "Test recording", "Test recording"
-        audio["album"], audio["tracknumber"] = "First copy", "1"
-        audio.save()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        require_storage(config)
-        publish_directory(staging, target)
-        sync_filesystem(target)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-    return "Test album added. Your original test file is unchanged."

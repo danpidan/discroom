@@ -1,4 +1,4 @@
-# Disc Room — Pi test build, version 0.3.0
+# Disc Room — Pi test build, version 0.3.1
 
 Native Python / PyQt5 interface for your Raspberry Pi 4B running Bookworm with
 `armhf` applications. Designed around 1280 × 720 landscape; test on your existing
@@ -31,9 +31,8 @@ Native Python / PyQt5 interface for your Raspberry Pi 4B running Bookworm with
    to leave fullscreen, or use **Settings → Close app** to exit.
 
 4. Open **Settings**, select the Ugreen/USB DAC in the detected **Audio output**
-   list, and press **Save**. Then use **Settings → Import ripped test track**. This copies your existing
-   `~/cd-test/test-track.flac` into a new test album and leaves the source file
-   untouched. Back in Library, open **First copy**, then **Play album**.
+   list, and press **Save**. If your library already contains albums, open an
+   album and choose **Play album** to check playback.
 5. Insert an audio CD. The app checks every four seconds and shows **Play CD**
    and **Copy CD** after reading the track list. The desktop's removable-media
    popup may still appear during this test; close that popup.
@@ -184,11 +183,19 @@ Launch `python3 launch.py`, open Settings, select the detected USB DAC output,
 and press Save. Dependency installation is not needed again if the first build
 is already installed. Output selection still needs testing on your Pi.
 
-For the Git updater, run the one-time setup in DEVELOPMENT.md. The prepared
-repository is https://github.com/danpidan/discroom.git. The setup script logs
-into your account through GitHub CLI and pushes the starter Git history and
-v0.3.0 tag. The chat has not authenticated or pushed into your GitHub account.
-After setup, GUI updates do not need further ZIP transfers.
+For the existing public GitHub repository, the Pi can download the app without
+logging in:
 
-Check playback/volume and track switching, then use the test album to check
+```sh
+git clone https://github.com/danpidan/discroom.git ~/discroom-git
+cd ~/discroom-git
+python3 launch.py
+```
+
+If this folder already exists, launch its `launch.py` rather than cloning again.
+Use **Settings → Software updates → Check for updates → Update app** to install
+new numbered releases. The app restarts automatically. Publishing changes to
+GitHub still requires the repository owner's authentication.
+
+Check playback/volume and track switching, then use an album to check
 editing, deletion and restoration. See CHANGELOG.md for changes and limits.

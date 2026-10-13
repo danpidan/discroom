@@ -1,3 +1,10 @@
+# Version 0.3.1
+
+- Removed the Import ripped test track button from Settings and its test-only
+  import code. The empty-library message now explains how to copy a CD.
+- Updated setup instructions to use normal album playback and CD copying.
+- Existing music, including any previously imported test album, is preserved.
+
 # Version 0.3.0
 
 - Added Git release updates at Settings → Software updates, with the source

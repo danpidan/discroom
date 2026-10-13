@@ -1,4 +1,4 @@
-DISC ROOM — PI TEST BUILD 0.3.0
+DISC ROOM — PI TEST BUILD 0.3.1
 
 Extract the ZIP so the app is in /home/cddigitiser/discroom.
 
@@ -10,9 +10,8 @@ python3 launch.py --mount /media/cddigitiser/DA265AA768731CC7
 
 In the app:
 1. Settings → Audio output → choose Ugreen/USB DAC → Save.
-2. Settings → Import ripped test track.
-3. Library → First copy → Play album.
-4. Insert a CD → Copy CD → edit details → Save & Copy.
+2. Library → select a stored album → Play album, if you already have music.
+3. Insert a CD → Copy CD → edit details → Save & Copy.
 
 Run windowed first. To use fullscreen later:
 
@@ -23,20 +22,20 @@ Escape leaves fullscreen. Settings → Close app exits.
 UPDATE TESTS:
 1. Play stored music. Try volume +/- and the wider slider.
 2. Open the album, select another track, then Play selected.
-3. Use the imported test album to try Edit track and Delete track.
+3. Use a stored album to try Edit track and Delete track.
 4. Settings → Trash → select the removed item → Restore.
 
 Delete moves music to Trash. Delete permanently in Trash frees disk space.
 Updating the existing app only requires replacing its files and relaunching;
 you do not need to run install.sh again.
 
-ONE-TIME GITHUB SETUP:
-cd ~/discroom
-bash setup-github.sh
+PUBLIC GITHUB DOWNLOAD (NO PI LOGIN):
+git clone https://github.com/danpidan/discroom.git ~/discroom-git
+cd ~/discroom-git
+python3 launch.py
 
-Follow GitHub's browser login. The script pushes the prepared source and
-v0.3.0 tag to github.com/danpidan/discroom and creates ~/discroom-dev.
-Then launch the app and open Settings → Software updates.
+If ~/discroom-git already exists, skip cloning and launch from that folder.
+Then open Settings → Software updates → Check for updates.
 Update app installs a newer numbered release and restarts automatically.
 See DEVELOPMENT.md for VS Code remote SSH and publishing future versions.
 
