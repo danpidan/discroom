@@ -21,6 +21,9 @@ Current app version: **0.3.3**.
 | Network | Ethernet or Wi-Fi for installation, metadata/cover lookup and updates. Stored music can play offline. |
 | Setup equipment | A computer and microSD reader for writing the OS. A keyboard/mouse is useful for initial display setup; SSH can handle terminal maintenance. |
 
+<img width="2288" height="1013" alt="image" src="https://github.com/user-attachments/assets/02073192-46ca-4ebd-a342-1c7c6c841f63" />
+
+
 **Compatibility:** Raspberry Pi 4B is the tested model. The app may work on other
 Raspberry Pis, but they have not been tested. Hardware testing so far used
 Raspberry Pi OS **Bookworm / Debian 12**, with 32-bit (`armhf`) applications and
