@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import random
 import re
 import shutil
 import subprocess
@@ -19,7 +20,7 @@ from dataclasses import dataclass, field
 import requests
 from mutagen.flac import FLAC
 
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 USER_AGENT = f"DiscRoom/{VERSION} (personal Raspberry Pi CD library)"
 CONFIG_PATH = Path.home() / ".config/discroom/config.json"
 
@@ -335,6 +336,7 @@ class Track:
     artist: str
     number: int
     seconds: float
+    size_bytes: int = 0
 
 
 @dataclass
@@ -349,6 +351,28 @@ class Album:
     tracks: list[Track] = field(default_factory=list)
 
 
+def shuffled_tracks(albums, rng=None):
+    """Build a complete shuffled queue without changing album track order."""
+    tracks = []
+    seen = set()
+    for album in albums:
+        for track in album.tracks:
+            if track.path not in seen:
+                seen.add(track.path)
+                tracks.append(track)
+    (rng or random).shuffle(tracks)
+    return tracks
+
+
+def format_file_size(size_bytes):
+    """Use decimal storage units, matching drive capacity labels."""
+    size = max(0, size_bytes)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1000 or unit == "TB":
+            return f"{size:.0f} B" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1000
+
+
 def scan_library(library):
     albums = {}
     skipped = 0
@@ -360,10 +384,15 @@ def scan_library(library):
             path = Path(directory) / name
             try:
                 audio = FLAC(path)
+                details = path.stat()
                 get = lambda tag, fallback="": audio.get(tag, [fallback])[0]
                 title = get("album", path.parent.name)
                 artist = get("albumartist", get("artist", "Unknown artist"))
                 key = f"{directory}|{artist}|{title}"
+                number_text = get("tracknumber", "0").split("/")[0]
+                number = int(number_text) if number_text.isdigit() else 0
+                track = Track(str(path), get("title", path.stem), get("artist", artist),
+                              number, audio.info.length, details.st_size)
                 if key not in albums:
                     cover = audio.pictures[0].data if audio.pictures else b""
                     if not cover:
@@ -373,11 +402,8 @@ def scan_library(library):
                                 cover = cover_path.read_bytes()
                                 break
                     albums[key] = Album(key, title, artist, get("date")[:4], get("genre"), cover)
-                number_text = get("tracknumber", "0").split("/")[0]
-                number = int(number_text) if number_text.isdigit() else 0
-                albums[key].tracks.append(Track(str(path), get("title", path.stem), get("artist", artist),
-                                               number, audio.info.length))
-                albums[key].modified = max(albums[key].modified, path.stat().st_mtime)
+                albums[key].tracks.append(track)
+                albums[key].modified = max(albums[key].modified, details.st_mtime)
             except Exception:
                 skipped += 1
     for album in albums.values():

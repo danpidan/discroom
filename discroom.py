@@ -23,7 +23,8 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QFileD
 
 from core import (VERSION, Album, Disc, Track, blank_metadata, drive_has_disc,
                   load_config, lookup_disc, read_disc, require_storage,
-                  rip_album, save_config, scan_library, run_checked)
+                  rip_album, save_config, scan_library, run_checked,
+                  shuffled_tracks, format_file_size)
 from audio import discover_outputs
 from player import Player
 from library_management import edit_tags, move_to_trash, list_trash, restore_trash, delete_trash_forever
@@ -41,6 +42,7 @@ QPushButton:hover, QPushButton:checked { background: #354055; border-color: #f4b
 QPushButton:disabled { color: #788496; border-color: #253247; }
 QPushButton#primary { background: #f4be68; color: #171a22; font-weight: bold; border-color: #f4be68; }
 QPushButton#tile { text-align: left; padding: 0; }
+QPushButton[homeControl="true"] { min-height: 50px; font-size: 20px; padding: 10px 16px; }
 QLineEdit, QComboBox { background: #1b2636; border: 1px solid #3a4860; border-radius: 10px; padding: 10px; min-height: 24px; }
 QLineEdit:focus { border-color: #f4be68; }
 QComboBox QAbstractItemView { selection-background-color: #475268; }
@@ -324,11 +326,32 @@ class MainWindow(QMainWindow):
         logo = heading("DISC  ROOM", 19)
         logo.setStyleSheet("color: #f4be68; font-size: 23px; font-weight: bold;")
         top.addWidget(logo)
-        top.addStretch()
+        drive = QVBoxLayout()
         self.storage = QLabel("Checking music drive…")
-        top.addWidget(self.storage)
+        drive.addWidget(self.storage)
+        self.storage_bar = QProgressBar()
+        self.storage_bar.setRange(0, 1000)
+        self.storage_bar.setValue(0)
+        self.storage_bar.setTextVisible(False)
+        self.storage_bar.setFixedHeight(18)
+        self.storage_bar.setStyleSheet("QProgressBar { min-height: 16px; }")
+        self.storage_bar.setAccessibleName("Music drive storage used, 0 to 1 TB")
+        drive.addWidget(self.storage_bar)
+        scale = QHBoxLayout()
+        scale.addWidget(QLabel("0"))
+        scale.addStretch()
+        scale.addWidget(QLabel("1 TB"))
+        drive.addLayout(scale)
+        top.addLayout(drive, 1)
+        self.fullscreen_button = button("Full screen", self.toggle_fullscreen)
+        top.addWidget(self.fullscreen_button)
+        desktop_button = button("Pi desktop", self.return_to_desktop)
+        desktop_button.setToolTip("Minimize Disc Room. Select it on the taskbar, then press Full screen to return.")
+        top.addWidget(desktop_button)
         outer.addLayout(top)
-        content = QHBoxLayout()
+        content_widget = QWidget()
+        content = QHBoxLayout(content_widget)
+        content.setContentsMargins(0, 0, 0, 0)
         nav = QVBoxLayout()
         self.nav_buttons = {}
         for label in ("Library", "Favourites", "Queue", "Settings"):
@@ -337,6 +360,9 @@ class MainWindow(QMainWindow):
             self.nav_buttons[label] = control
             nav.addWidget(control)
         nav.addStretch()
+        self.shuffle_button = button("Shuffle all", self.shuffle_library, True)
+        self.shuffle_button.setToolTip("Play every stored track once in a new random order, across all albums.")
+        nav.addWidget(self.shuffle_button)
         nav.addWidget(button("Refresh library", self.refresh_library))
         content.addLayout(nav)
         main = QVBoxLayout()
@@ -409,11 +435,21 @@ class MainWindow(QMainWindow):
         note.setWordWrap(True)
         cd_layout.addWidget(note)
         content.addWidget(self.cd_panel)
-        outer.addLayout(content, 1)
+        content_area = QScrollArea()
+        content_area.setWidgetResizable(True)
+        content_area.setFrameShape(QFrame.NoFrame)
+        content_area.setWidget(content_widget)
+        outer.addWidget(content_area, 1)
         self.keyboard = Keyboard()
         outer.addWidget(self.keyboard)
         self.player = Player(config, self)
         outer.addWidget(self.player)
+        # Enlarge every home-screen button, including album cards and transport.
+        for control in root.findChildren(QPushButton):
+            if self.keyboard.isAncestorOf(control):
+                continue
+            control.setProperty("homeControl", True)
+            control.setMinimumHeight(72)
         self.nav_buttons["Library"].setChecked(True)
         self.set_cd_buttons()
         self.timer = QTimer(self)
@@ -427,6 +463,41 @@ class MainWindow(QMainWindow):
         else:
             QTimer.singleShot(500, self.poll_disc)
         self.storage_status()
+
+    def set_fullscreen(self, enabled):
+        self.showFullScreen() if enabled else self.showNormal()
+        self.config["fullscreen"] = bool(enabled)
+        if not self.demo:
+            try:
+                save_config(self.config)
+            except Exception as exc:
+                self.message.setText(f"Display changed, but its preference could not be saved: {exc}")
+
+    def toggle_fullscreen(self):
+        self.set_fullscreen(not self.isFullScreen())
+
+    def return_to_desktop(self):
+        self.keyboard.hide()
+        self.message.setText("Select Disc Room on the taskbar, then press Full screen to return. F11 also toggles full screen.")
+        self.showNormal()
+        self.showMinimized()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "fullscreen_button"):
+            self.fullscreen_button.setText("Windowed" if self.isFullScreen() else "Full screen")
+
+    def shuffle_library(self):
+        if self.library_busy:
+            self.message.setText("Wait for the music-library edit to finish, then shuffle again.")
+            return
+        tracks = shuffled_tracks(self.albums)
+        if not tracks:
+            self.message.setText("No stored music to shuffle. Copy a CD or connect your music drive first.")
+            return
+        self.player.play([track.path for track in tracks],
+                         [(track.title, track.artist) for track in tracks])
+        self.message.setText(f"Shuffle queue: {len(tracks)} tracks from your whole library.")
 
     def work(self, function, result, error=None):
         worker = Worker(function)
@@ -460,7 +531,7 @@ class MainWindow(QMainWindow):
                  ("Open Skies", "The Pines", "Folk", "2023"), ("After Midnight", "Jon Bell", "Jazz", "2022"),
                  ("Slow Waves", "Coastline", "Ambient", "2025"), ("Small Hours", "Ada Grey", "Soul", "2024")]
         self.albums = [Album(str(i), title, artist, year, genre, modified=i,
-                             tracks=[Track("demo", title, artist, 1, 248)])
+                             tracks=[Track(f"demo/{i}.flac", title, artist, 1, 248, 28_400_000)])
                        for i, (title, artist, genre, year) in enumerate(names)]
         self.disc = Disc(list(range(1, 13)), [18000] * 12, [i * 18000 for i in range(12)])
         self.metadata = blank_metadata(self.disc)
@@ -475,18 +546,29 @@ class MainWindow(QMainWindow):
 
     def storage_status(self):
         if self.demo:
-            self.storage.setText("●  Design preview")
+            self.storage.setText("Drive used: 128 GB · demo")
+            self.storage_bar.setEnabled(True)
+            self.storage_bar.setValue(128)
+            self.storage_bar.setToolTip("Example drive usage: 128 GB on the 0–1 TB scale.")
             return
         try:
             library = require_storage(self.config, create=True)
             disk = shutil.disk_usage(library)
-            self.storage.setText(f"●  Music drive · {disk.free / 1024**3:.0f} GiB free")
+            used = format_file_size(disk.used)
+            self.storage.setText(f"Drive used: {used} · {disk.free / 1000**3:.0f} GB free")
             self.storage.setStyleSheet("color: #77dda2;")
+            self.storage_bar.setEnabled(True)
+            self.storage_bar.setValue(max(0, min(1000, round(disk.used / 1000**3))))
+            self.storage_bar.setToolTip(f"Drive used: {used} of {format_file_size(disk.total)}. "
+                                        "Includes all files on the music partition; graph scale is fixed at 0–1 TB.")
         except Exception:
             self.storage_available = False
             self.library_refresh_pending = False
             self.storage.setText("●  Music drive disconnected")
             self.storage.setStyleSheet("color: #f4be68;")
+            self.storage_bar.setValue(0)
+            self.storage_bar.setEnabled(False)
+            self.storage_bar.setToolTip("Storage usage is unavailable while the music drive is disconnected.")
             self.albums = []
             self.update_filters()
             self.render_albums()
@@ -589,7 +671,10 @@ class MainWindow(QMainWindow):
             label = QLabel(album.artist)
             label.setWordWrap(True)
             layout.addWidget(label)
-            layout.addWidget(button("Open album", lambda checked=False, item=album: self.open_album(item)))
+            open_button = button("Open album", lambda checked=False, item=album: self.open_album(item))
+            open_button.setProperty("homeControl", True)
+            open_button.setMinimumHeight(72)
+            layout.addWidget(open_button)
             self.grid.addWidget(tile, index // columns, index % columns)
         if not albums:
             self.grid.addWidget(QLabel("No matching albums" if self.albums else "Your albums will appear here."), 0, 0)
@@ -626,7 +711,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel(f"{album.artist} · {album.year} · {len(album.tracks)} tracks"))
         tracks = QListWidget()
         for track in album.tracks:
-            item = QListWidgetItem(f"{track.number:02d}   {track.title}     {clock(track.seconds)}")
+            item = QListWidgetItem(f"{track.number:02d}   {track.title}     {clock(track.seconds)} · {format_file_size(track.size_bytes)}")
+            item.setToolTip(f"{track.title}\n{format_file_size(track.size_bytes)} ({track.size_bytes:,} bytes)")
             item.setSizeHint(QSize(0, 58))
             tracks.addItem(item)
         layout.addWidget(tracks, 1)
@@ -1285,10 +1371,12 @@ class MainWindow(QMainWindow):
             field.setText(folder)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key_F11:
+            self.toggle_fullscreen()
+        elif event.key() == Qt.Key_Escape:
             self.keyboard.hide()
             if self.isFullScreen():
-                self.showNormal()
+                self.set_fullscreen(False)
         elif event.key() == Qt.Key_Q and event.modifiers() & Qt.ControlModifier:
             self.close()
         else:

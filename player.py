@@ -8,7 +8,8 @@ import threading
 import uuid
 
 from PyQt5.QtCore import Qt, QProcess, QThread, QTimer, pyqtSignal
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QMessageBox
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+                             QSlider, QMessageBox, QStyle, QStyleOptionSlider)
 
 from core import require_storage, save_config
 from mpv_control import ControlCancelled, request_batch, report_playback_exit
@@ -24,6 +25,68 @@ def control_button(text, callback):
 def clock(value):
     value = int(value or 0)
     return f"{value // 60}:{value % 60:02d}"
+
+
+def music_playlist(sources):
+    """Keep large stored-music queues out of the operating system argv limit."""
+    paths = [str(Path(source).resolve()) for source in sources]
+    if any("\n" in path or "\r" in path for path in paths):
+        raise ValueError("A music file has a line break in its name. Rename that file before playing this queue.")
+    descriptor, path = tempfile.mkstemp(prefix="discroom-queue-", suffix=".m3u8")
+    playlist = None
+    try:
+        playlist = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+        with playlist:
+            playlist.write("#EXTM3U\n")
+            playlist.writelines(source + "\n" for source in paths)
+    except BaseException:
+        if playlist is None:
+            os.close(descriptor)
+        Path(path).unlink(missing_ok=True)
+        raise
+    return path
+
+
+class SeekSlider(QSlider):
+    """Make the whole timeline a touch target, with normal keyboard controls."""
+
+    def value_at(self, point):
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        groove = self.style().subControlRect(QStyle.CC_Slider, option, QStyle.SC_SliderGroove, self)
+        handle = self.style().subControlRect(QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
+        if self.orientation() == Qt.Horizontal:
+            position = point.x() - groove.x() - handle.width() // 2
+            span = groove.width() - handle.width()
+        else:
+            position = point.y() - groove.y() - handle.height() // 2
+            span = groove.height() - handle.height()
+        return QStyle.sliderValueFromPosition(self.minimum(), self.maximum(), position,
+                                              max(0, span), option.upsideDown)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setFocus(Qt.MouseFocusReason)
+            self.setSliderDown(True)
+            self.setSliderPosition(self.value_at(event.pos()))
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.isSliderDown():
+            self.setSliderPosition(self.value_at(event.pos()))
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.isSliderDown():
+            self.setSliderPosition(self.value_at(event.pos()))
+            self.setSliderDown(False)
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 
 class ControlWorker(QThread):
@@ -72,12 +135,18 @@ class ControlWorker(QThread):
                                             cancelled=lambda: generation != self.generation)
                     result = {key: reply.get("data") for key, reply in zip(properties, replies)
                               if reply.get("error") == "success"}
+                    result["_seek_revision"] = command
                 else:
-                    actual = ["set_property", "volume", command] if kind == "volume" else command
+                    if kind == "volume":
+                        actual = ["set_property", "volume", command]
+                    elif kind == "seek":
+                        actual = ["seek", command[1], "absolute+exact"]
+                    else:
+                        actual = command
                     reply = request_batch(self.path, [actual], cancelled=lambda: generation != self.generation)[0]
                     if reply.get("error") != "success":
                         raise RuntimeError(reply.get("error", "Playback control failed."))
-                    result = command if kind == "volume" else reply.get("data")
+                    result = command[0] if kind == "seek" else command if kind == "volume" else reply.get("data")
                 self.completed.emit(generation, kind, result)
             except ControlCancelled:
                 pass
@@ -107,7 +176,12 @@ class Player(QWidget):
         self.generation = 0
         self.intentional_stop = False
         self.pending_volume = None
-        self.ipc = str(Path(tempfile.gettempdir()) / f"discroom-{os.getuid()}-{uuid.uuid4().hex}.sock")
+        self.seek_revision = 0
+        self.pending_seek = None
+        self.requested_seek = None
+        user_id = os.getuid() if hasattr(os, "getuid") else 0
+        self.ipc = str(Path(tempfile.gettempdir()) / f"discroom-{user_id}-{uuid.uuid4().hex}.sock")
+        self.playlist_path = None
         self.process = QProcess(self)
         self.process.finished.connect(self.finished)
         self.process.errorOccurred.connect(self.process_error)
@@ -156,10 +230,14 @@ class Player(QWidget):
         timeline = QHBoxLayout()
         self.elapsed = QLabel("0:00")
         timeline.addWidget(self.elapsed)
-        self.seek = QSlider(Qt.Horizontal)
+        self.seek = SeekSlider(Qt.Horizontal)
         self.seek.setRange(0, 1000)
-        self.seek.setMinimumHeight(30)
+        self.seek.setMinimumHeight(48)
+        self.seek.setAccessibleName("Song position")
+        self.seek.setToolTip("Tap or drag to change the song position")
         self.seek.sliderReleased.connect(self.seek_to)
+        self.seek.sliderMoved.connect(self.preview_seek)
+        self.seek.actionTriggered.connect(self.seek_action)
         timeline.addWidget(self.seek, 1)
         self.total = QLabel("0:00")
         timeline.addWidget(self.total)
@@ -211,19 +289,27 @@ class Player(QWidget):
             except Exception as exc:
                 QMessageBox.warning(self, "Music drive", str(exc))
                 return
+            try:
+                self.playlist_path = music_playlist(sources)
+            except Exception as exc:
+                QMessageBox.warning(self, "Playback queue", f"The music queue could not be prepared: {exc}")
+                return
         self.sources, self.names, self.from_cd = sources, names, from_cd
         self.cd_offsets = cd_offsets
         self.position = -1
         self.diagnostics = ""
         self.intentional_stop = False
-        args = ["--no-video", "--no-config", "--keep-open=no", "--msg-level=all=warn",
+        args = ["--no-video", "--no-config", "--keep-open=no", "--loop-playlist=no", "--loop-file=no", "--msg-level=all=warn",
                 f"--input-ipc-server={self.ipc}", f"--audio-device={self.config['audio_device']}",
                 f"--volume={self.volume.value()}"]
         if from_cd:
             args += [f"--cdrom-device={self.config['device']}", f"--start={start_seconds}"]
-        elif start_index:
-            args.append(f"--playlist-start={start_index}")
-        self.process.start("mpv", args + ["--"] + sources)
+            args += ["--"] + sources
+        else:
+            args.append(f"--playlist={self.playlist_path}")
+            if start_index:
+                args.append(f"--playlist-start={start_index}")
+        self.process.start("mpv", args)
         display = max(0, min(start_index, len(names) - 1))
         self.title.setText(names[display][0])
         self.artist.setText(names[display][1])
@@ -235,10 +321,12 @@ class Player(QWidget):
 
     def process_error(self, error):
         if error == QProcess.FailedToStart and not self.intentional_stop:
+            self.clear_playlist()
             QMessageBox.warning(self, "Playback", "mpv could not start. Install it with: sudo apt install mpv")
 
     def finished(self, code, status):
         self.read_error()
+        self.clear_playlist()
         self.pause.setText("Play")
         if report_playback_exit(code, status == QProcess.NormalExit, self.intentional_stop):
             QMessageBox.warning(self, "Playback stopped",
@@ -260,16 +348,29 @@ class Player(QWidget):
         self.command(["add", "chapter", direction] if self.from_cd else
                      ["playlist-next" if direction > 0 else "playlist-prev", "force"])
 
+    def clear_playlist(self):
+        if self.playlist_path is not None:
+            try:
+                Path(self.playlist_path).unlink(missing_ok=True)
+            except OSError:
+                # Playback must still stop if the temporary directory disappears.
+                return
+            self.playlist_path = None
+
     def stop(self):
         self.intentional_stop = True
         self.generation += 1
         self.control.session(self.generation)
         self.pending_volume = None
+        self.seek_revision = 0
+        self.pending_seek = None
+        self.requested_seek = None
         if self.process.state() != QProcess.NotRunning:
             self.process.terminate()
             if not self.process.waitForFinished(700):
                 self.process.kill()
                 self.process.waitForFinished(500)
+        self.clear_playlist()
         self.from_cd = False
         self.sources = []
         self.names = []
@@ -282,13 +383,35 @@ class Player(QWidget):
         if os.path.exists(self.ipc):
             os.unlink(self.ipc)
 
-    def seek_to(self):
+    def preview_seek(self, value):
         if self.duration:
-            self.command(["seek", self.seek.value() * self.duration / 1000, "absolute"])
+            self.elapsed.setText(clock(value * self.duration / 1000))
+
+    def seek_action(self, action):
+        # Qt emits this before updating value(), so read the new slider position.
+        # Dragging commits on release; arrows, Page Up/Down and Home/End commit here.
+        if not self.seek.isSliderDown():
+            self.seek_to(self.seek.sliderPosition())
+
+    def seek_to(self, value=None):
+        if self.duration and self.process.state() == QProcess.Running:
+            value = self.seek.value() if value is None else value
+            self.preview_seek(value)
+            self.seek_revision += 1
+            self.requested_seek = (self.seek_revision, value * self.duration / 1000)
+            self.submit_seek()
+
+    def submit_seek(self):
+        # Coalesce repeated key presses or a second drag while mpv is responding.
+        if self.pending_seek is None and self.requested_seek is not None:
+            request = self.requested_seek
+            self.requested_seek = None
+            self.pending_seek = request[0]
+            self.control.submit(self.generation, "seek", request)
 
     def tick(self):
-        if self.process.state() == QProcess.Running:
-            self.control.submit(self.generation, "state")
+        if self.process.state() == QProcess.Running and self.pending_seek is None:
+            self.control.submit(self.generation, "state", self.seek_revision)
 
     def control_result(self, generation, kind, result):
         if generation != self.generation or self.process.state() != QProcess.Running:
@@ -297,15 +420,25 @@ class Player(QWidget):
             if result == self.pending_volume:
                 self.pending_volume = None
             return
+        if kind == "seek":
+            if result == self.pending_seek:
+                self.pending_seek = None
+                self.submit_seek()
+                self.tick()
+            return
         if kind != "state":
             return
         elapsed = result.get("time-pos") or 0
-        self.duration = result.get("duration") or 0
-        self.elapsed.setText(clock(elapsed))
-        self.total.setText(clock(self.duration))
         self.pause.setText("Play" if result.get("pause") else "Pause")
-        if self.duration and not self.seek.isSliderDown():
-            self.seek.setValue(int(elapsed / self.duration * 1000))
+        # A poll queued before a seek may finish after the user's release. Keep
+        # the preview until a poll from the acknowledged seek revision arrives.
+        if (not self.seek.isSliderDown() and self.pending_seek is None
+                and result.get("_seek_revision") == self.seek_revision):
+            self.duration = result.get("duration") or 0
+            self.elapsed.setText(clock(elapsed))
+            self.total.setText(clock(self.duration))
+            if self.duration:
+                self.seek.setValue(int(elapsed / self.duration * 1000))
         if self.pending_volume is None and not self.volume.isSliderDown() and isinstance(result.get("volume"), (int, float)):
             value = max(0, min(100, round(result["volume"])))
             self.volume.blockSignals(True)
@@ -328,8 +461,12 @@ class Player(QWidget):
         if kind == "volume":
             self.pending_volume = None
             self.main.message.setText(f"Volume control could not apply the change: {message}")
-        elif kind == "command":
+        elif kind in ("command", "seek"):
             self.main.message.setText(f"Playback control could not apply the change: {message}")
+            if kind == "seek":
+                self.pending_seek = None
+                self.submit_seek()
+                self.tick()
 
     def shutdown(self):
         self.timer.stop()

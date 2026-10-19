@@ -1,4 +1,4 @@
-DISC ROOM — PI TEST BUILD 0.3.3
+DISC ROOM — PI BUILD 0.3.4
 
 Extract the ZIP so the app is in /home/cddigitiser/discroom.
 
@@ -17,7 +17,14 @@ Run windowed first. To use fullscreen later:
 
 python3 launch.py --fullscreen
 
-Escape leaves fullscreen. Settings → Close app exits.
+The Full screen / Windowed button and F11 toggle fullscreen. Escape leaves it.
+Pi desktop minimizes the app without stopping playback or copying. Select
+Disc Room on the Pi taskbar, then press Full screen to return.
+Settings → Close app exits.
+
+Shuffle all plays every stored track once in a random order across the library.
+Album tracks show file sizes. The top bar shows music-drive usage from 0 to 1 TB.
+Tap or drag the song timeline and release to change playback position.
 
 Settings → Restart Pi reboots the Pi after confirmation.
 Settings → Shut Down safely shuts it down after confirmation. Wait until the
@@ -34,8 +41,8 @@ UPDATE TESTS:
 4. Settings → Trash → select the removed item → Restore.
 
 Delete moves music to Trash. Delete permanently in Trash frees disk space.
-Updating the existing app only requires replacing its files and relaunching;
-you do not need to run install.sh again.
+Update an existing installation with Settings → Software updates → Update app.
+You do not need to run install.sh again for v0.3.4.
 
 PUBLIC GITHUB DOWNLOAD (NO PI LOGIN):
 git clone https://github.com/danpidan/discroom.git ~/discroom-git

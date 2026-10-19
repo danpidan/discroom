@@ -10,14 +10,19 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
+# The core test helper provides import shims when optional packages are absent.
+import test_core
+from core import format_file_size
+
 
 class LibraryStartupTests(unittest.TestCase):
     def setUp(self):
         self.mounted = False
         self.scanned_albums = ["stored album"]
         self.pending_workers = []
+        self.disk = SimpleNamespace(free=720_000_000_000, used=280_000_000_000, total=1_000_000_000_000)
         source = Path(__file__).with_name("discroom.py")
-        tree = ast.parse(source.read_text())
+        tree = ast.parse(source.read_text(encoding="utf-8"))
         window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "MainWindow")
         window.body = [node for node in window.body if isinstance(node, ast.FunctionDef)
                        and node.name in ("storage_status", "refresh_library")]
@@ -25,7 +30,8 @@ class LibraryStartupTests(unittest.TestCase):
         window.decorator_list = []
         namespace = {
             "require_storage": self.require_storage,
-            "shutil": SimpleNamespace(disk_usage=lambda path: SimpleNamespace(free=1024**3)),
+            "shutil": SimpleNamespace(disk_usage=lambda path: self.disk),
+            "format_file_size": format_file_size,
             "scan_library": lambda path: (self.scanned_albums, 0),
         }
         exec(compile(ast.Module(body=[window], type_ignores=[]), str(source), "exec"), namespace)
@@ -40,6 +46,7 @@ class LibraryStartupTests(unittest.TestCase):
         self.window.storage_available = False
         self.window.library_refresh_pending = False
         self.window.storage = Mock()
+        self.window.storage_bar = Mock()
         self.window.message = Mock()
         self.window.render_albums = Mock()
         self.window.update_filters = Mock()
@@ -163,6 +170,43 @@ class LibraryStartupTests(unittest.TestCase):
         self.window.refresh_library()
         self.finish_scan()
         self.assertEqual(self.window.work.call_count, 2)
+
+    def test_storage_bar_uses_decimal_used_bytes_on_a_fixed_one_tb_scale(self):
+        self.mounted = True
+        # A smaller partition still uses the same graph scale: 280 GB is 28%.
+        self.disk.total = 500_000_000_000
+        self.disk.free = 220_000_000_000
+        self.window.storage_status()
+        self.window.storage_bar.setValue.assert_called_once_with(280)
+        self.window.storage_bar.setEnabled.assert_called_once_with(True)
+        self.assertIn("280.0 GB", self.window.storage.setText.call_args.args[0])
+        self.assertIn("500.0 GB", self.window.storage_bar.setToolTip.call_args.args[0])
+        self.assertIn("fixed at 0–1 TB", self.window.storage_bar.setToolTip.call_args.args[0])
+
+    def test_storage_larger_than_one_tb_caps_the_bar_and_keeps_exact_used_label(self):
+        self.mounted = True
+        self.disk = SimpleNamespace(free=300_000_000_000, used=1_700_000_000_000, total=2_000_000_000_000)
+        self.window.storage_status()
+        self.window.storage_bar.setValue.assert_called_once_with(1000)
+        self.assertIn("1.7 TB", self.window.storage.setText.call_args.args[0])
+
+    def test_disconnected_storage_bar_is_disabled_and_unavailable(self):
+        self.window.storage_status()
+        self.window.storage_bar.setValue.assert_called_once_with(0)
+        self.window.storage_bar.setEnabled.assert_called_once_with(False)
+        self.assertIn("unavailable", self.window.storage_bar.setToolTip.call_args.args[0])
+        self.window.work.assert_not_called()
+
+    def test_demo_bar_is_an_explicit_example_without_reading_storage(self):
+        self.window.demo = True
+        self.namespace["require_storage"] = Mock(side_effect=AssertionError("Demo must not read storage"))
+        self.window.storage_status()
+        self.window.storage_bar.setValue.assert_called_once_with(128)
+        self.window.storage_bar.setEnabled.assert_called_once_with(True)
+        self.assertIn("demo", self.window.storage.setText.call_args.args[0])
+        self.assertIn("Example", self.window.storage_bar.setToolTip.call_args.args[0])
+        self.namespace["require_storage"].assert_not_called()
+        self.window.work.assert_not_called()
 
 
 if __name__ == "__main__":

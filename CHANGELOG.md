@@ -1,3 +1,23 @@
+# Version 0.3.4
+
+- Added Shuffle all to play every stored track once in a random order across
+  the entire library, including albums hidden by search or filters.
+- Album track lists show each FLAC file's size alongside its duration.
+- Added a music-drive usage bar at the top, with a fixed decimal 0–1 TB scale,
+  used/free space labels and a disconnected state. Usage includes all files on
+  the selected music partition, including Trash.
+- Added Pi desktop to minimize the app while playback/copying continues, plus
+  a Full screen / Windowed button. F11 toggles full screen; Escape leaves it.
+  Select Disc Room on the desktop taskbar and press Full screen to return.
+- Enlarged home-screen navigation, album, CD and playback buttons to at least
+  72 pixels high, while retaining the separate touchscreen keyboard layout.
+- The song timeline supports tapping anywhere and dragging, with elapsed-time
+  preview, keyboard controls and protection against stale playback updates.
+- Stored playback uses a temporary playlist file so large shuffled libraries
+  do not exceed the operating system's command-line limit.
+- Added library, storage, window and playback regression coverage, and Linux
+  CI checks. The app still uses its existing Pi dependencies.
+
 # Version 0.3.3
 
 - Added Restart Pi and Shut Down buttons to Settings, each with a confirmation

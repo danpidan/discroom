@@ -4,7 +4,7 @@ A touchscreen CD player and FLAC music library for Raspberry Pi. Insert a CD,
 choose **Play** or **Copy**, check its album details, and save your music to an
 external drive. Browse, search, play and manage your stored albums in one app.
 
-Current app version: **0.3.3**.
+Current app version: **0.3.4**.
 
 ## Hardware needed
 
@@ -89,12 +89,12 @@ Run as your normal Pi user:
 
 ```sh
 sudo apt install -y git
-git clone --branch v0.3.3 --single-branch https://github.com/danpidan/discroom.git ~/discroom-git
+git clone --branch v0.3.4 --single-branch https://github.com/danpidan/discroom.git ~/discroom-git
 cd ~/discroom-git
 bash install.sh
 ```
 
-The clone downloads the published **v0.3.3** app. The repository is public, so
+The clone downloads the published **v0.3.4** app. The repository is public, so
 no GitHub login is needed for downloads or updates. `install.sh` installs the
 Python, audio and CD-copying dependencies through apt. It uses sudo for package
 installation; the app itself runs as your ordinary user.
@@ -186,8 +186,30 @@ of an already stored album/disc, give it a distinct album title.
 - Use artist, genre and year filters, sorting, or **Favourites** to narrow the list.
 - Open an album and press **Play album**, or select a track and press **Play selected**.
 - **Add to queue** adds the album to the playback queue.
-- Use **Previous**, **Play/Pause**, **Next**, **Stop** and the seek slider.
+- Press **Shuffle all** to play all stored tracks once in a new random order.
+  This uses the whole library, including albums hidden by search, filters or
+  Favourites. Press it again to start a fresh shuffled queue.
+- Each track in an album shows its duration and file size in MB.
+- Use **Previous**, **Play/Pause**, **Next** and **Stop**. Tap anywhere on the
+  song timeline or press and drag it, then release to seek. The elapsed time
+  previews your chosen position while dragging.
 - Adjust volume with the slider or **− / +** buttons. The app remembers the level.
+
+The storage bar at the top shows used space on the selected music partition
+from **0 to 1 TB** (decimal). Its label shows used/free space, including other
+files and the app's Trash. A smaller partition still uses the fixed 1 TB scale;
+the tooltip shows its actual capacity. A disconnected drive shows unavailable
+usage. Home-screen buttons are at least 72 pixels high for touch use.
+
+### Return to the Pi desktop and full screen
+
+Press **Pi desktop** at the top to minimize Disc Room and reveal your existing
+Raspberry Pi desktop. Playback and CD copying continue. Select **Disc Room** on
+the desktop taskbar to bring it back, then press **Full screen** at the top.
+Press **Windowed** to leave full screen; **F11** also toggles it and **Escape**
+leaves full screen. The full-screen button saves your preference for next time.
+In the minimal Lite/Openbox setup, minimizing reveals that existing session;
+it does not install a full Raspberry Pi desktop.
 
 **Library, search, filters and playback controls** — the CD panel on the right
 also contains **Play**, **Copy**, **Tracks** and **Eject**:
@@ -238,7 +260,7 @@ the previous version. **Roll back update** selects a previous version for other
 problems; it rolls back app code, rather than music edits or settings history.
 
 For maintainers, the release tag must match `VERSION` in that release's
-`core.py`: `v0.3.3` must contain `VERSION = "0.3.3"`. Upload/commit the code first,
+`core.py`: `v0.3.4` must contain `VERSION = "0.3.4"`. Upload/commit the code first,
 then create the matching new tag. Do not rewrite published tags. Publishing
 requires your GitHub account; see [DEVELOPMENT.md](DEVELOPMENT.md).
 
