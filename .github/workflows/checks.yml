@@ -1,0 +1,29 @@
+name: Application checks
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  software-tests:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing application dependencies for GUI checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0
+          python3 -m pip install requests mutagen PyQt5
+      - name: Run hardware-free regression tests
+        run: python3 -m unittest discover -v
+      - name: Check Python syntax
+        run: python3 -m compileall -q -x '/\.' .
+      - name: Check installer syntax
+        run: sh -n install.sh && sh -n setup-github.sh
