@@ -27,8 +27,7 @@ def main():
         if git("branch", "--show-current") != "main":
             raise RuntimeError("Switch to main before publishing a release.")
         tag = "v" + application_version(ROOT)
-        tests = subprocess.run([sys.executable, "-m", "unittest", "test_core", "test_audio", "test_controls",
-                                "test_management", "test_updater", "test_library_startup", "test_power"], cwd=ROOT)
+        tests = subprocess.run([sys.executable, "-m", "unittest", "discover", "-v"], cwd=ROOT)
         if tests.returncode:
             raise RuntimeError("Tests failed; no release tag was created or published.")
         for name in git("ls-files", "--", "*.py").splitlines():
