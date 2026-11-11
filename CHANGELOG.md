@@ -1,3 +1,20 @@
+# Version 0.3.5
+
+- Pressing Space on a selected track-title cell now opens its editor without
+  replacing the existing title. Spaces still type normally while editing.
+- The touchscreen keyboard reopens when tapping an already focused field
+  after hiding it, including album details, track details and CD-copy details.
+- Pressing Return in Edit track saves the details instead of cancelling.
+- Correcting a validation error and saving preserves album-artist propagation
+  without prematurely changing the original metadata.
+- Genre filters group capitalization and whitespace variants, ignore blank
+  tags, and retain the selected genre after a library refresh. Classic Rock
+  remains distinct from ClassicRock, and filtering does not rewrite tags.
+- Added six interface regressions. All 134 tests passed in an emulated Raspberry
+  Pi running Bookworm ARM64, together with real FLAC saves and fresh scans for
+  album, artist, genre and track names containing spaces.
+- No new Pi dependencies are required.
+
 # Version 0.3.4
 
 - Added Shuffle all to play every stored track once in a random order across

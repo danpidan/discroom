@@ -131,6 +131,16 @@ class Keyboard(QWidget):
         layout.addLayout(row)
         self.hide()
 
+    def watch_field(self, field):
+        field.installEventFilter(self)
+
+    def eventFilter(self, field, event):
+        # Hide keyboard keeps the editor focused, so tapping it again must
+        # reopen the keyboard even though no new FocusIn event is sent.
+        if event.type() in (QEvent.FocusIn, QEvent.MouseButtonPress):
+            self.show()
+        return super().eventFilter(field, event)
+
     def type(self, text):
         target = QApplication.focusWidget()
         if isinstance(target, QLineEdit):
@@ -148,11 +158,15 @@ class Keyboard(QWidget):
 
 
 class EditDelegate(QStyledItemDelegate):
-    editing = pyqtSignal()
+    def __init__(self, keyboard, parent):
+        super().__init__(parent)
+        self.keyboard = keyboard
 
     def createEditor(self, parent, option, index):
         editor = super().createEditor(parent, option, index)
-        self.editing.emit()
+        if isinstance(editor, QLineEdit):
+            self.keyboard.watch_field(editor)
+        self.keyboard.show()
         return editor
 
 
@@ -207,13 +221,14 @@ class MetadataDialog(QDialog):
         layout.addWidget(self.match_combo)
         if editing:
             self.match_combo.hide()
+        self.keyboard = Keyboard()
         fields = QGridLayout()
         self.inputs = {}
         for index, (key, label) in enumerate((("artist", "Album artist"), ("album", "Album title"),
                                               ("year", "Year"), ("genre", "Genre"))):
             fields.addWidget(QLabel(label), 0, index)
             edit = QLineEdit()
-            edit.installEventFilter(self)
+            self.keyboard.watch_field(edit)
             self.inputs[key] = edit
             fields.addWidget(edit, 1, index)
         layout.addLayout(fields)
@@ -226,12 +241,11 @@ class MetadataDialog(QDialog):
         self.table.setColumnWidth(0, 70)
         self.table.setColumnWidth(1, 500)
         self.table.horizontalHeader().setStretchLastSection(True)
-        delegate = EditDelegate(self.table)
-        delegate.editing.connect(lambda: self.keyboard.show())
+        delegate = EditDelegate(self.keyboard, self.table)
         self.table.setItemDelegate(delegate)
         self.table.setEditTriggers(QTableWidget.AllEditTriggers)
+        self.table.installEventFilter(self)
         layout.addWidget(self.table, 1)
-        self.keyboard = Keyboard()
         layout.addWidget(self.keyboard)
         actions = QHBoxLayout()
         actions.addWidget(button("Cancel", self.reject))
@@ -242,10 +256,17 @@ class MetadataDialog(QDialog):
         if matches:
             self.match_combo.setCurrentIndex(1)
 
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.FocusIn and isinstance(obj, QLineEdit) and hasattr(self, "keyboard"):
-            self.keyboard.show()
-        return super().eventFilter(obj, event)
+    def eventFilter(self, watched, event):
+        if (watched is self.table and event.type() == QEvent.KeyPress
+                and event.key() == Qt.Key_Space and event.modifiers() == Qt.NoModifier
+                and self.table.state() != QTableWidget.EditingState):
+            item = self.table.currentItem()
+            if item is not None and item.flags() & Qt.ItemIsEditable:
+                # AnyKeyPressed normally replaces the title with the space that
+                # opened the editor. Start editing without forwarding that key.
+                self.table.editItem(item)
+                return True
+        return super().eventFilter(watched, event)
 
     def populate(self, metadata):
         self.metadata = copy.deepcopy(metadata)
@@ -275,15 +296,14 @@ class MetadataDialog(QDialog):
         self.setFocus()
         QApplication.processEvents()
         original_artist = self.metadata["artist"]
-        for key, edit in self.inputs.items():
-            self.metadata[key] = edit.text().strip()
-        if not self.metadata["artist"] or not self.metadata["album"]:
+        values = {key: edit.text().strip() for key, edit in self.inputs.items()}
+        if not values["artist"] or not values["album"]:
             QMessageBox.warning(self, "Missing details", "Enter an album artist and album title.")
             return
-        if self.metadata["year"] and (not self.metadata["year"].isdigit() or len(self.metadata["year"]) != 4):
+        if values["year"] and (not values["year"].isdigit() or len(values["year"]) != 4):
             QMessageBox.warning(self, "Year", "Enter a four-digit year, or leave Year blank.")
             return
-        self.metadata["tracks"] = []
+        tracks = []
         for row, number in enumerate(self.disc.numbers):
             title = self.table.item(row, 1).text().strip()
             if not title:
@@ -291,8 +311,9 @@ class MetadataDialog(QDialog):
                 return
             artist = self.table.item(row, 2).text().strip()
             if not artist or (artist == original_artist and not self.compilation.isChecked()):
-                artist = self.metadata["artist"]
-            self.metadata["tracks"].append({"title": title, "artist": artist})
+                artist = values["artist"]
+            tracks.append({"title": title, "artist": artist})
+        self.metadata.update(values, tracks=tracks)
         self.accept()
 
 
@@ -619,15 +640,26 @@ class MainWindow(QMainWindow):
 
     def update_filters(self):
         for name, combo in self.filters.items():
-            previous = combo.currentText()
+            previous = combo.currentData() if name == "Genre" else combo.currentText()
             attr = name.lower()
-            values = sorted({getattr(album, attr) for album in self.albums if getattr(album, attr)})
             combo.blockSignals(True)
             combo.clear()
             combo.addItem(f"All {attr}s")
-            combo.addItems(values)
-            if previous in values:
-                combo.setCurrentText(previous)
+            if name == "Genre":
+                genres = {}
+                for album in self.albums:
+                    label = " ".join(album.genre.split())
+                    if label:
+                        genres.setdefault(label.casefold(), label)
+                for key in sorted(genres):
+                    combo.addItem(genres[key], key)
+                if previous is not None:
+                    combo.setCurrentIndex(max(0, combo.findData(previous)))
+            else:
+                values = sorted({getattr(album, attr) for album in self.albums if getattr(album, attr)})
+                combo.addItems(values)
+                if previous in values:
+                    combo.setCurrentText(previous)
             combo.blockSignals(False)
 
     def render_albums(self):
@@ -638,12 +670,16 @@ class MainWindow(QMainWindow):
             if item.widget():
                 item.widget().deleteLater()
         term = self.search.text().strip().casefold()
+        genre = self.filters["Genre"].currentData()
+        other_filters = [(name.lower(), combo.currentText()) for name, combo in self.filters.items()
+                         if name != "Genre" and combo.currentIndex()]
         albums = []
         for album in self.albums:
             if self.page == "Favourites" and album.key not in self.config.get("favourites", []):
                 continue
-            if any(combo.currentIndex() and getattr(album, name.lower()) != combo.currentText()
-                   for name, combo in self.filters.items()):
+            if genre is not None and " ".join(album.genre.split()).casefold() != genre:
+                continue
+            if any(getattr(album, attr) != value for attr, value in other_filters):
                 continue
             haystack = " ".join([album.title, album.artist] + [track.title + " " + track.artist for track in album.tracks])
             if term and term not in haystack.casefold():
@@ -817,17 +853,23 @@ class MainWindow(QMainWindow):
         artist = QLineEdit(track.artist)
         layout.addWidget(artist)
         keyboard = Keyboard()
+        keyboard.watch_field(title)
+        keyboard.watch_field(artist)
         layout.addWidget(keyboard)
         keyboard.show()
         layout.addStretch()
         actions = QHBoxLayout()
-        actions.addWidget(button("Cancel", dialog.reject))
+        cancel = button("Cancel", dialog.reject)
+        cancel.setAutoDefault(False)
+        actions.addWidget(cancel)
         def save():
             if not title.text().strip() or not artist.text().strip():
                 QMessageBox.warning(dialog, "Missing details", "Enter a track title and artist.")
                 return
             dialog.accept()
-        actions.addWidget(button("Save details", save, True))
+        save_details = button("Save details", save, True)
+        save_details.setDefault(True)
+        actions.addWidget(save_details)
         layout.addLayout(actions)
         title.setFocus()
         if dialog.exec_() != QDialog.Accepted:

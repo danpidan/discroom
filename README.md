@@ -4,7 +4,7 @@ A touchscreen CD player and FLAC music library for Raspberry Pi. Insert a CD,
 choose **Play** or **Copy**, check its album details, and save your music to an
 external drive. Browse, search, play and manage your stored albums in one app.
 
-Current app version: **0.3.4**.
+Current app version: **0.3.5**.
 
 ## Hardware needed
 
@@ -89,12 +89,12 @@ Run as your normal Pi user:
 
 ```sh
 sudo apt install -y git
-git clone --branch v0.3.4 --single-branch https://github.com/danpidan/discroom.git ~/discroom-git
+git clone --branch v0.3.5 --single-branch https://github.com/danpidan/discroom.git ~/discroom-git
 cd ~/discroom-git
 bash install.sh
 ```
 
-The clone downloads the published **v0.3.4** app. The repository is public, so
+The clone downloads the published **v0.3.5** app. The repository is public, so
 no GitHub login is needed for downloads or updates. `install.sh` installs the
 Python, audio and CD-copying dependencies through apt. It uses sudo for package
 installation; the app itself runs as your ordinary user.
@@ -260,7 +260,7 @@ the previous version. **Roll back update** selects a previous version for other
 problems; it rolls back app code, rather than music edits or settings history.
 
 For maintainers, the release tag must match `VERSION` in that release's
-`core.py`: `v0.3.4` must contain `VERSION = "0.3.4"`. Upload/commit the code first,
+`core.py`: `v0.3.5` must contain `VERSION = "0.3.5"`. Upload/commit the code first,
 then create the matching new tag. Do not rewrite published tags. Publishing
 requires your GitHub account; see [DEVELOPMENT.md](DEVELOPMENT.md).
 

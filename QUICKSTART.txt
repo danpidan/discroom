@@ -1,4 +1,4 @@
-DISC ROOM — PI BUILD 0.3.4
+DISC ROOM — PI BUILD 0.3.5
 
 Extract the ZIP so the app is in /home/cddigitiser/discroom.
 
@@ -42,7 +42,7 @@ UPDATE TESTS:
 
 Delete moves music to Trash. Delete permanently in Trash frees disk space.
 Update an existing installation with Settings → Software updates → Update app.
-You do not need to run install.sh again for v0.3.4.
+You do not need to run install.sh again for v0.3.5.
 
 PUBLIC GITHUB DOWNLOAD (NO PI LOGIN):
 git clone https://github.com/danpidan/discroom.git ~/discroom-git
