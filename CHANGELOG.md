@@ -1,3 +1,15 @@
+# Version 0.3.6
+
+- Added an optional Now playing screen with full album artwork, track and album
+  details, playback status, and a return to the existing library view.
+- Reuses saved or embedded covers for stored music and loads matched CD artwork
+  in the background. Missing artwork has a placeholder.
+- The screen follows queued and shuffled tracks and shares the existing
+  playback controls, volume and adjustable timeline.
+- All 150 automated tests passed in emulated Raspberry Pi OS Bookworm ARM64,
+  plus real mpv playback checks for track changes, pause, navigation and seeking.
+- No new Pi dependencies are required.
+
 # Version 0.3.5
 
 - Pressing Space on a selected track-title cell now opens its editor without

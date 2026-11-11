@@ -17,14 +17,14 @@ from PyQt5.QtGui import QColor, QFont, QLinearGradient, QPainter, QPixmap
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
                             QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
                             QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-                            QProgressBar, QPushButton, QScrollArea, QSlider,
+                            QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QStackedWidget,
                             QStyledItemDelegate, QTableWidget, QTableWidgetItem,
                             QVBoxLayout, QWidget)
 
 from core import (VERSION, Album, Disc, Track, blank_metadata, drive_has_disc,
                   load_config, lookup_disc, read_disc, require_storage,
                   rip_album, save_config, scan_library, run_checked,
-                  shuffled_tracks, format_file_size)
+                  shuffled_tracks, format_file_size, fetch_cover)
 from audio import discover_outputs
 from player import Player
 from library_management import edit_tags, move_to_trash, list_trash, restore_trash, delete_trash_forever
@@ -171,20 +171,28 @@ class EditDelegate(QStyledItemDelegate):
 
 
 class Cover(QWidget):
-    def __init__(self, album):
+    def __init__(self, album, full_cover=False):
         super().__init__()
+        self.full_cover = full_cover
+        self.set_album(album)
+        self.setMinimumHeight(140)
+        self.setMaximumHeight(190 if not full_cover else 16777215)
+
+    def set_album(self, album):
         self.album = album
         self.pixmap = QPixmap()
         if album.cover:
             self.pixmap.loadFromData(album.cover)
-        self.setMinimumHeight(140)
-        self.setMaximumHeight(190)
+        self.setAccessibleName(f"Album cover: {album.title}" if not self.pixmap.isNull()
+                               else f"No cover available: {album.title}")
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         if not self.pixmap.isNull():
-            pixmap = self.pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            pixmap = self.pixmap.scaled(self.size(), Qt.KeepAspectRatio if self.full_cover else
+                                       Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
             painter.drawPixmap((self.width() - pixmap.width()) // 2, (self.height() - pixmap.height()) // 2, pixmap)
             return
         seed = hashlib.sha256(self.album.key.encode()).digest()
@@ -199,6 +207,67 @@ class Cover(QWidget):
         painter.setFont(QFont("DejaVu Sans", 30, QFont.Bold))
         painter.drawText(self.rect().adjusted(18, 0, -18, -12), Qt.AlignLeft | Qt.AlignBottom,
                          "".join(word[0] for word in self.album.artist.split()[:2]).upper() or "DR")
+
+
+class NowPlayingScreen(QWidget):
+    """An optional artwork view; the window's existing transport stays shared."""
+
+    def __init__(self, back):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(32)
+        self.cover = Cover(Album("idle", "Your music", "Disc Room"), full_cover=True)
+        self.cover.setMinimumSize(180, 180)
+        self.cover.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        layout.addWidget(self.cover, 1)
+        right = QVBoxLayout()
+        text_area = QScrollArea()
+        text_area.setWidgetResizable(True)
+        text_area.setFrameShape(QFrame.NoFrame)
+        text_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        text_widget = QWidget()
+        details = QVBoxLayout(text_widget)
+        details.setContentsMargins(0, 0, 8, 0)
+        details.setSpacing(12)
+        details.addStretch()
+        self.state = QLabel("NOTHING PLAYING")
+        self.state.setStyleSheet("color: #f4be68; font-size: 18px; font-weight: bold;")
+        self.title = heading("Choose something to play", 32)
+        self.artist = QLabel("Your music, front and centre.")
+        self.artist.setStyleSheet("font-size: 24px; color: #cdd6e4;")
+        self.album = QLabel("")
+        self.album.setStyleSheet("font-size: 20px; color: #aebbd0;")
+        self.info = QLabel("Play an album or CD, then open this screen.")
+        self.info.setStyleSheet("color: #aebbd0;")
+        for label in (self.state, self.title, self.artist, self.album, self.info):
+            label.setTextFormat(Qt.PlainText)
+            label.setWordWrap(True)
+            # Long metadata must wrap instead of forcing a wider touchscreen.
+            label.setMinimumWidth(0)
+            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            details.addWidget(label)
+        details.addStretch()
+        text_area.setWidget(text_widget)
+        right.addWidget(text_area, 1)
+        self.back_button = button("Back to library", back)
+        right.addWidget(self.back_button, 0, Qt.AlignLeft)
+        layout.addLayout(right, 1)
+        self.art_key = None
+
+    def display(self, album, title, artist, state, info):
+        key = (album.key, album.title, album.artist, album.cover)
+        if key != self.art_key:
+            self.cover.set_album(album)
+            self.art_key = key
+        self.title.setText(title)
+        self.title.setToolTip(title)
+        self.artist.setText(artist)
+        self.album.setText(album.title if state != "NOTHING PLAYING" else "")
+        self.state.setText(state)
+        if state != "NOTHING PLAYING" and self.cover.pixmap.isNull():
+            info += "\nNo cover available"
+        self.info.setText(info)
 
 
 class MetadataDialog(QDialog):
@@ -327,6 +396,11 @@ class MainWindow(QMainWindow):
         self.disc = None
         self.matches = []
         self.metadata = None
+        self.cd_cover = b""
+        self.cd_cover_key = None
+        self.playing_cd_disc = None
+        self.playing_cd_album = None
+        self.playback_albums = {}
         self.copy_job = None
         self.disc_busy = False
         self.copying = False
@@ -364,6 +438,9 @@ class MainWindow(QMainWindow):
         scale.addWidget(QLabel("1 TB"))
         drive.addLayout(scale)
         top.addLayout(drive, 1)
+        self.now_playing_button = button("Now playing", self.toggle_now_playing)
+        self.now_playing_button.setCheckable(True)
+        top.addWidget(self.now_playing_button)
         self.fullscreen_button = button("Full screen", self.toggle_fullscreen)
         top.addWidget(self.fullscreen_button)
         desktop_button = button("Pi desktop", self.return_to_desktop)
@@ -460,10 +537,15 @@ class MainWindow(QMainWindow):
         content_area.setWidgetResizable(True)
         content_area.setFrameShape(QFrame.NoFrame)
         content_area.setWidget(content_widget)
-        outer.addWidget(content_area, 1)
+        self.screens = QStackedWidget()
+        self.screens.addWidget(content_area)
+        self.now_playing = NowPlayingScreen(self.show_library)
+        self.screens.addWidget(self.now_playing)
+        outer.addWidget(self.screens, 1)
         self.keyboard = Keyboard()
         outer.addWidget(self.keyboard)
         self.player = Player(config, self)
+        self.player.changed.connect(self.update_now_playing)
         outer.addWidget(self.player)
         # Enlarge every home-screen button, including album cards and transport.
         for control in root.findChildren(QPushButton):
@@ -484,6 +566,46 @@ class MainWindow(QMainWindow):
         else:
             QTimer.singleShot(500, self.poll_disc)
         self.storage_status()
+
+    def toggle_now_playing(self):
+        if self.screens.currentWidget() is self.now_playing:
+            self.show_library()
+        else:
+            self.keyboard.hide()
+            self.update_now_playing()
+            self.screens.setCurrentWidget(self.now_playing)
+            self.now_playing_button.setChecked(True)
+
+    def show_library(self):
+        # Preserve the user's search, filters and Library/Favourites selection.
+        self.screens.setCurrentIndex(0)
+        self.now_playing_button.setChecked(False)
+
+    def update_now_playing(self):
+        player = self.player
+        position = player.position
+        if not player.names or not 0 <= position < len(player.names):
+            self.now_playing.display(Album("idle", "Your music", "Disc Room"),
+                                     "Choose something to play", "Your music, front and centre.",
+                                     "NOTHING PLAYING", "Play an album or CD, then open this screen.")
+            return
+        title, artist = player.names[position]
+        if player.from_cd:
+            album = self.playing_cd_album
+        else:
+            album = self.playback_albums.get(player.sources[position]) if position < len(player.sources) else None
+            if album:
+                track = next((track for track in album.tracks if track.path == player.sources[position]), None)
+                if track:
+                    title, artist = track.title, track.artist
+        album = album or Album("no-cover", "Audio CD" if player.from_cd else "Stored music", artist)
+        state = {"loading": "STARTING", "playing": "PLAYING", "paused": "PAUSED",
+                 "finished": "PLAYBACK FINISHED", "error": "PLAYBACK STOPPED"}.get(player.playback_state, "STOPPED")
+        source = "Audio CD" if player.from_cd else "Your library"
+        info = f"{source} · Track {position + 1} of {len(player.names)}"
+        if album.year:
+            info += f" · {album.year}"
+        self.now_playing.display(album, title, artist, state, info)
 
     def set_fullscreen(self, enabled):
         self.showFullScreen() if enabled else self.showNormal()
@@ -639,6 +761,7 @@ class MainWindow(QMainWindow):
         self.work(lambda worker: scan_library(library), result, failed)
 
     def update_filters(self):
+        self.playback_albums = {track.path: album for album in self.albums for track in album.tracks}
         for name, combo in self.filters.items():
             previous = combo.currentData() if name == "Genre" else combo.currentText()
             attr = name.lower()
@@ -661,6 +784,7 @@ class MainWindow(QMainWindow):
                 if previous in values:
                     combo.setCurrentText(previous)
             combo.blockSignals(False)
+        self.update_now_playing()
 
     def render_albums(self):
         if not hasattr(self, "grid"):
@@ -994,11 +1118,15 @@ class MainWindow(QMainWindow):
                 self.disc = None
                 self.metadata = None
                 self.matches = []
+                self.cd_cover = b""
+                self.cd_cover_key = None
                 self.cd_title.setText("Insert a CD")
                 self.cd_info.setText("Play it now, or save it to your library.")
             elif disc:
                 self.disc = disc
                 self.metadata = blank_metadata(disc)
+                self.cd_cover = b""
+                self.cd_cover_key = None
                 self.cd_title.setText("CD detected")
                 self.cd_info.setText(f"{len(disc.numbers)} tracks · {clock(disc.seconds)}\nLooking up album details…")
                 self.work(lambda worker: lookup_disc(disc), lambda matches: self.lookup_done(disc, matches),
@@ -1030,6 +1158,42 @@ class MainWindow(QMainWindow):
         if self.disc and self.metadata:
             self.cd_info.setText(f"{self.metadata['album']}\n{self.metadata['artist']}\n\n"
                                  f"{len(self.disc.numbers)} tracks · {clock(self.disc.seconds)}")
+            self.load_cd_cover()
+            self.update_playing_cd()
+
+    def load_cd_cover(self):
+        disc = self.disc
+        release_id = self.metadata.get("release_id", "") if self.metadata else ""
+        key = (id(disc), release_id)
+        if key == self.cd_cover_key:
+            return
+        self.cd_cover_key = key
+        self.cd_cover = b""
+        if self.demo or not disc or not release_id:
+            return
+
+        def received(cover):
+            # A lookup may finish after ejection or after another edition is chosen.
+            if self.disc is not disc or self.cd_cover_key != key:
+                return
+            self.cd_cover = cover
+            self.update_playing_cd()
+
+        self.work(lambda worker: fetch_cover(release_id), received, lambda message: received(b""))
+
+    def update_playing_cd(self):
+        if self.playing_cd_disc is not self.disc or not self.disc or not self.metadata:
+            return
+        self.playing_cd_album = Album(f"cd:{self.disc.disc_id}", self.metadata["album"],
+                                      self.metadata["artist"], self.metadata.get("year", ""),
+                                      self.metadata.get("genre", ""), self.cd_cover)
+        if self.player.from_cd:
+            self.player.names = [(track["title"], track["artist"]) for track in self.metadata["tracks"]]
+            position = self.player.position
+            if 0 <= position < len(self.player.names):
+                self.player.title.setText(self.player.names[position][0])
+                self.player.artist.setText(self.player.names[position][1])
+            self.player.changed.emit()
 
     def set_cd_buttons(self):
         self.play_cd_button.setEnabled(bool(self.disc) and not self.copying)
@@ -1039,6 +1203,9 @@ class MainWindow(QMainWindow):
     def play_cd(self, start=0):
         if not self.disc:
             return
+        self.load_cd_cover()
+        self.playing_cd_disc = self.disc
+        self.update_playing_cd()
         # mpv opens the whole CD as one stream with a chapter for each track.
         # Track numbers are not URL paths: cdda://1 would mean a device named 1.
         offsets = [(offset - self.disc.offsets[0]) / 75 for offset in self.disc.offsets]

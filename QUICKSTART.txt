@@ -1,4 +1,4 @@
-DISC ROOM — PI BUILD 0.3.5
+DISC ROOM — PI BUILD 0.3.6
 
 Extract the ZIP so the app is in /home/cddigitiser/discroom.
 
@@ -25,6 +25,8 @@ Settings → Close app exits.
 Shuffle all plays every stored track once in a random order across the library.
 Album tracks show file sizes. The top bar shows music-drive usage from 0 to 1 TB.
 Tap or drag the song timeline and release to change playback position.
+Now playing shows the saved album cover, track details and playback status.
+Back to library returns to your search and filters while music keeps playing.
 
 Settings → Restart Pi reboots the Pi after confirmation.
 Settings → Shut Down safely shuts it down after confirmation. Wait until the
@@ -42,7 +44,7 @@ UPDATE TESTS:
 
 Delete moves music to Trash. Delete permanently in Trash frees disk space.
 Update an existing installation with Settings → Software updates → Update app.
-You do not need to run install.sh again for v0.3.5.
+You do not need to run install.sh again for v0.3.6.
 
 PUBLIC GITHUB DOWNLOAD (NO PI LOGIN):
 git clone https://github.com/danpidan/discroom.git ~/discroom-git

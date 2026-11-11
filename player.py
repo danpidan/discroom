@@ -170,6 +170,7 @@ class Player(QWidget):
         self.sources = []
         self.names = []
         self.position = -1
+        self.playback_state = "stopped"
         self.from_cd = False
         self.cd_offsets = []
         self.duration = 0
@@ -266,24 +267,23 @@ class Player(QWidget):
                 self.main.message.setText(f"Volume changed, but its preference could not be saved: {exc}")
 
     def started(self):
+        if self.intentional_stop:
+            return
+        self.playback_state = "playing"
         self.pending_volume = self.volume.value()
         self.control.submit(self.generation, "volume", self.volume.value())
+        self.changed.emit()
 
     def play(self, sources, names, from_cd=False, cd_offsets=None, start_seconds=0, start_index=0):
         # Copy lists before stop clears the previous session, including replay calls.
         sources, names, cd_offsets = list(sources), list(names), list(cd_offsets or [])
         self.stop()
-        if not sources:
+        if not sources or not names:
             return
-        if self.demo:
-            self.title.setText(names[0][0])
-            self.artist.setText(names[0][1] + " · demo")
-            self.pause.setText("Pause")
-            return
-        if not self.config.get("audio_device"):
+        if not self.demo and not self.config.get("audio_device"):
             QMessageBox.information(self, "Choose an audio output", "Open Settings, choose your USB DAC and press Save.")
             return
-        if not from_cd:
+        if not self.demo and not from_cd:
             try:
                 require_storage(self.config)
             except Exception as exc:
@@ -296,9 +296,19 @@ class Player(QWidget):
                 return
         self.sources, self.names, self.from_cd = sources, names, from_cd
         self.cd_offsets = cd_offsets
-        self.position = -1
+        # Publish the selected track before mpv's first poll, including CDs
+        # where the source is one stream and the selection is a time offset.
+        display = sum(offset <= start_seconds for offset in cd_offsets) - 1 if from_cd and cd_offsets else start_index
+        self.position = max(0, min(display, len(names) - 1))
         self.diagnostics = ""
         self.intentional_stop = False
+        self.playback_state = "playing" if self.demo else "loading"
+        self.title.setText(names[self.position][0])
+        self.artist.setText(names[self.position][1] + (" · demo" if self.demo else ""))
+        self.pause.setText("Pause")
+        self.changed.emit()
+        if self.demo:
+            return
         args = ["--no-video", "--no-config", "--keep-open=no", "--loop-playlist=no", "--loop-file=no", "--msg-level=all=warn",
                 f"--input-ipc-server={self.ipc}", f"--audio-device={self.config['audio_device']}",
                 f"--volume={self.volume.value()}"]
@@ -307,14 +317,9 @@ class Player(QWidget):
             args += ["--"] + sources
         else:
             args.append(f"--playlist={self.playlist_path}")
-            if start_index:
-                args.append(f"--playlist-start={start_index}")
+            if self.position:
+                args.append(f"--playlist-start={self.position}")
         self.process.start("mpv", args)
-        display = max(0, min(start_index, len(names) - 1))
-        self.title.setText(names[display][0])
-        self.artist.setText(names[display][1])
-        self.pause.setText("Pause")
-        self.changed.emit()
 
     def read_error(self):
         self.diagnostics = (self.diagnostics + bytes(self.process.readAllStandardError()).decode("utf-8", "replace"))[-2500:]
@@ -322,29 +327,47 @@ class Player(QWidget):
     def process_error(self, error):
         if error == QProcess.FailedToStart and not self.intentional_stop:
             self.clear_playlist()
+            self.playback_state = "error"
+            self.pause.setText("Play")
+            self.changed.emit()
             QMessageBox.warning(self, "Playback", "mpv could not start. Install it with: sudo apt install mpv")
 
     def finished(self, code, status):
         self.read_error()
         self.clear_playlist()
         self.pause.setText("Play")
-        if report_playback_exit(code, status == QProcess.NormalExit, self.intentional_stop):
+        failed = report_playback_exit(code, status == QProcess.NormalExit, self.intentional_stop)
+        self.playback_state = "stopped" if self.intentional_stop else "error" if failed else "finished"
+        self.changed.emit()
+        if failed:
             QMessageBox.warning(self, "Playback stopped",
                                 "Playback could not continue. Check the selected audio output in Settings.\n\n"
                                 + (self.diagnostics or "The playback process stopped unexpectedly."))
-        self.changed.emit()
 
     def command(self, command):
         if self.process.state() == QProcess.Running:
             self.control.submit(self.generation, "command", command)
 
     def toggle(self):
-        if self.process.state() == QProcess.Running:
+        if self.demo and self.sources:
+            self.playback_state = "playing" if self.playback_state == "paused" else "paused"
+            self.pause.setText("Play" if self.playback_state == "paused" else "Pause")
+            self.changed.emit()
+        elif self.process.state() == QProcess.Running:
             self.command(["cycle", "pause"])
         elif self.sources:
             self.play(self.sources, self.names, self.from_cd, self.cd_offsets)
 
     def skip(self, direction):
+        if self.demo:
+            if self.names:
+                position = max(0, min(self.position + direction, len(self.names) - 1))
+                if position != self.position:
+                    self.position = position
+                    self.title.setText(self.names[position][0])
+                    self.artist.setText(self.names[position][1] + " · demo")
+                    self.changed.emit()
+            return
         self.command(["add", "chapter", direction] if self.from_cd else
                      ["playlist-next" if direction > 0 else "playlist-prev", "force"])
 
@@ -375,6 +398,10 @@ class Player(QWidget):
         self.sources = []
         self.names = []
         self.cd_offsets = []
+        self.position = -1
+        self.playback_state = "stopped"
+        self.title.setText("Choose something to play")
+        self.artist.setText("Your music")
         self.pause.setText("Play")
         self.duration = 0
         self.elapsed.setText("0:00")
@@ -382,6 +409,7 @@ class Player(QWidget):
         self.seek.setValue(0)
         if os.path.exists(self.ipc):
             os.unlink(self.ipc)
+        self.changed.emit()
 
     def preview_seek(self, value):
         if self.duration:
@@ -429,7 +457,12 @@ class Player(QWidget):
         if kind != "state":
             return
         elapsed = result.get("time-pos") or 0
-        self.pause.setText("Play" if result.get("pause") else "Pause")
+        changed = False
+        if isinstance(result.get("pause"), bool):
+            state = "paused" if result["pause"] else "playing"
+            changed = state != getattr(self, "playback_state", None)
+            self.playback_state = state
+            self.pause.setText("Play" if result["pause"] else "Pause")
         # A poll queued before a seek may finish after the user's release. Keep
         # the preview until a poll from the acknowledged seek revision arrives.
         if (not self.seek.isSliderDown() and self.pending_seek is None
@@ -453,7 +486,9 @@ class Player(QWidget):
             self.artist.setText(self.names[position][1])
             if position != self.position:
                 self.position = position
-                self.changed.emit()
+                changed = True
+        if changed:
+            self.changed.emit()
 
     def control_failure(self, generation, kind, message):
         if generation != self.generation or self.process.state() != QProcess.Running:
